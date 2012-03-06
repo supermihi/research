@@ -156,7 +156,7 @@ class NondominatedFacetAlgorithm:
         self.k = k
         self.solver = solver
         
-    def phase1(self):
+    def phase1_old(self):
         multipliers = numpy.zeros(self.k+1)
         multipliers[self.k] = 1
         min_c = self.solver(multipliers)
@@ -234,6 +234,60 @@ class NondominatedFacetAlgorithm:
         #print(points)
         #print(onb)
         return True
+    
+    def phase1(self):
+        """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
+        Mathematical Programming 11 (1976), pp.128-149."""
+        # find the initial point: minimize over last axis (original c objective function)
+        # (step 0)
+        direction = numpy.zeros(self.k+1)
+        direction[self.k] = 1
+        min_z = self.solver(direction)
+        print('step 0: P_J = {0}'.format(repr(min_z)))
+        P = min_z[:-1].reshape((self.k,1))
+
+        w = numpy.ones((1,1),dtype=numpy.double)
+        X = numpy.empty((self.k,1), dtype=numpy.double)
+        e1 = numpy.zeros((self.k+1,1),dtype=numpy.double)
+        e1[0,0] = 1
+        while True:
+            # step 1
+            print(P)
+            print(w)
+            print(X)
+            numpy.dot(P, w, X)
+            print('step 1: X = {0}'.format(X))
+            P_J = self.solver(numpy.hstack((X.ravel(), [EPS])))
+            if numpy.dot(X.T, P_J[:-1]) > numpy.dot(X.T, X) -EPS:
+                print('stop in 1 (c)')
+                break
+            P = numpy.hstack((P, P_J[:-1].reshape((self.k,1))))
+            w = numpy.vstack((w, 0))
+            while True:
+                result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P.shape[1]), P)), e1)
+                print(result)
+                u = result[0]
+                print("least-square solution: {0}".format(u))
+                v = u / numpy.sum(u)
+                if numpy.all(v > EPS):
+                    w = v
+                    break
+                else:
+                    POS = numpy.nonzero(w-v > EPS) # 3 (a)
+                    theta = min(1, numpy.min(w[POS]/(w[POS] - v[POS]))) # 3 (b)
+                    print(theta)
+                    w = theta*w + (1-theta)*v # 3 (c)
+                    w[numpy.nonzero(w<=EPS)] = 0 # 3 (d)
+                    print('step 3 (d): w = {0}'.format(w))
+                    firstZeroIndex = numpy.nonzero(w == 0)[0][0]
+                    w = numpy.delete(w, firstZeroIndex, 0)
+                    P = numpy.delete(P, firstZeroIndex, 1)
+                    
+        print(zeroInConvexHull([p.ravel() for p in numpy.hsplit(P, P.shape[1])]))
+                    
+                    
+        
+        
         
     def phase2(self):
         while len(self.points) < self.k+1:
@@ -256,26 +310,17 @@ class NondominatedFacetAlgorithm:
             
     
 if __name__ == "__main__":
-    for i in itertools.count():
-        seed = numpy.random.randint(1,10000000)
-        #seed = 3602279
-        numpy.random.seed(seed)
-        print(seed)
-        
-        k = 3
-        #solver = DummySolver(k, 3)
-        solver = RandomLPSolver(k+1, k**2)
-        #sys.exit(0)
-        nda = NondominatedFacetAlgorithm(k, solver)
-        try:
-            if nda.phase1() == "omgwtf" or i >= 1000000:
-                break
-                #if nda.phase1():
-                #    nda.phase2()
-        except ValueError as e:
-            if e.message == "optimization problem unbounded":
-                print(e)
-                continue
+    seed = numpy.random.randint(1,10000000)
+    seed = 6417330
+    numpy.random.seed(seed)
+    print(seed)
+    
+    k = 5
+    #solver = DummySolver(k, 3)
+    solver = RandomLPSolver(k+1, k**2)
+    #sys.exit(0)
+    nda = NondominatedFacetAlgorithm(k, solver)
+    nda.phase1()
     
 #===============================================================================
 # mu = numpy.randn(SIZE)
