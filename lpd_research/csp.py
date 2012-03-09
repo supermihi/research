@@ -53,7 +53,7 @@ class RandomLPSolver:
         for i in range(numFacets):
             coefficients = numpy.random.randint(-5,5,dimension)
             #coefficients /= numpy.linalg.norm(coefficients)
-            rhs = numpy.random.randint(dimension**2+1)
+            rhs = numpy.random.randint(dimension**2)+1
             print(coefficients, rhs)
             facets.append(coefficients)
             rhss.append(rhs)
@@ -248,42 +248,83 @@ class NondominatedFacetAlgorithm:
 
         w = numpy.ones((1,1),dtype=numpy.double)
         X = numpy.empty((self.k,1), dtype=numpy.double)
+        oldnormx = numpy.inf
         e1 = numpy.zeros((self.k+1,1),dtype=numpy.double)
         e1[0,0] = 1
-        while True:
+        majorCycles = minorCycles = 0
+        for i in itertools.count():
+            if i > 200:
+                print('200')
+                raw_input()
+                break
+            print('\n\n**STEP 1 [iteration {0}'.format(i))
+            print('random seed: {0}'.format(seed))
+            majorCycles += 1
             # step 1
-            print(P)
-            print(w)
-            print(X)
             numpy.dot(P, w, X)
             print('step 1: X = {0}'.format(X))
+            normx = numpy.linalg.norm(X)
+            if normx > oldnormx:
+                print("∥X∥ increased: {0} > {1}".format(normx, oldnormx))
+                raw_input()
+            print('step 1: ∥X∥ = {0}'.format(normx))
+            oldnormx = normx
+            print('step 1: P = {0}'.format(repr(P)))
+            print('step 1: w = {0}'.format(repr(w)))
             P_J = self.solver(numpy.hstack((X.ravel(), [EPS])))
+            # cplex check            
+            ans, sol = zeroInConvexHull([p.ravel() for p in numpy.hsplit(P, P.shape[1])])                
             if numpy.dot(X.T, P_J[:-1]) > numpy.dot(X.T, X) -EPS:
                 print('stop in 1 (c)')
+                if not ans:
+                    print('WARNING CPLEX DOES NOT AGREE')
                 break
+            elif ans:
+                print('break cplex')
+                break
+
             P = numpy.hstack((P, P_J[:-1].reshape((self.k,1))))
+            print('step 1 (b): P_J = {0}'.format(repr(P_J[:-1])))
             w = numpy.vstack((w, 0))
-            while True:
+            print('step 1 (e): w = {0}'.format(repr(w)))
+            for j in itertools.count():
+                if j > 100:
+                    print('100')
+                    raw_input()
+                    break
+                print('\n**STEP 2 [iteration {0}]'.format(j))
                 result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P.shape[1]), P)), e1)
-                print(result)
                 u = result[0]
-                print("least-square solution: {0}".format(u))
                 v = u / numpy.sum(u)
+                print("step 2 (a): v = {0}".format(repr(v)))
+                assert numpy.allclose(numpy.sum(v), 1)
+                if not numpy.allclose(numpy.dot( (numpy.ones((P.shape[1], P.shape[1])) + numpy.dot(P.T, P)), u), numpy.ones((P.shape[1],1))):
+                    print(numpy.dot( (numpy.ones((P.shape[1], P.shape[1])) + numpy.dot(P.T, P)), u) - numpy.ones((P.shape[1],1)))
+                    raw_input()
+                 
                 if numpy.all(v > EPS):
                     w = v
                     break
+                
                 else:
-                    POS = numpy.nonzero(w-v > EPS) # 3 (a)
-                    theta = min(1, numpy.min(w[POS]/(w[POS] - v[POS]))) # 3 (b)
-                    print(theta)
+                    minorCycles += 1
+                    POS = numpy.nonzero(v <= EPS) # 3 (a) corrected                    
+                    print("step 3 (a): POS = {0}".format(repr(POS)))
+                    #theta = min(1, numpy.min(w[POS]/(w[POS] - v[POS]))) # 3 (b)
+                    theta = min(1, numpy.max(v[POS]/(v[POS] - w[POS]))) # 3 (b)
+                    
+                    print("step 3 (c): θ = {0}".format(theta))
                     w = theta*w + (1-theta)*v # 3 (c)
                     w[numpy.nonzero(w<=EPS)] = 0 # 3 (d)
-                    print('step 3 (d): w = {0}'.format(w))
+                    print('step 3 (d): w = {0}'.format(repr(w)))
                     firstZeroIndex = numpy.nonzero(w == 0)[0][0]
                     w = numpy.delete(w, firstZeroIndex, 0)
                     P = numpy.delete(P, firstZeroIndex, 1)
-                    
-        print(zeroInConvexHull([p.ravel() for p in numpy.hsplit(P, P.shape[1])]))
+        
+            
+            #raw_input()    
+        print('major cycles: {0}    minor cycles: {1}'.format(majorCycles, minorCycles))
+        return majorCycles, minorCycles
                     
                     
         
@@ -310,17 +351,24 @@ class NondominatedFacetAlgorithm:
             
     
 if __name__ == "__main__":
-    seed = numpy.random.randint(1,10000000)
-    seed = 6417330
-    numpy.random.seed(seed)
-    print(seed)
-    
-    k = 5
-    #solver = DummySolver(k, 3)
-    solver = RandomLPSolver(k+1, k**2)
-    #sys.exit(0)
-    nda = NondominatedFacetAlgorithm(k, solver)
-    nda.phase1()
+    totalMaj = totalMin = 0
+    for i in range(200):
+        seed = numpy.random.randint(1,10000000)
+        #seed = 8137228
+        #seed = 1065186
+        numpy.random.seed(seed)
+        print(seed)
+        
+        k = 50
+        #solver = DummySolver(k, 3)
+        solver = RandomLPSolver(k+1, 10 + k**2)
+        #sys.exit(0)
+        nda = NondominatedFacetAlgorithm(k, solver)
+        major, minor = nda.phase1()
+        totalMaj += major
+        totalMin += minor
+    print('average major cycles: {0}'.format(totalMaj / i))
+    print('average minor cycles: {0}'.format(totalMin / i))
     
 #===============================================================================
 # mu = numpy.randn(SIZE)
