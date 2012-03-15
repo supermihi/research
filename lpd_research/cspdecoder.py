@@ -12,7 +12,7 @@ from lpdecoding.codes.trellis import INPUT, PARITY
 from lpdecoding.algorithms import path
 import itertools
 import numpy
-EPS = 1e-8
+EPS = 1e-10
         
         
 def zeroInConvexHull(points):
@@ -73,84 +73,87 @@ class NDFDecoder(Decoder):
         
     def solve(self):
         self.code.setCost(self.llrVector)
-        self.NDA()
+        
+        # find point with minimum cost in z-direction
+        direction = numpy.zeros(self.k+1)
+        direction[-1] = 1
+        Y = self.solveScalarization(direction).reshape((self.k+1,1))
+        # set all but last component to 0 -> initial Y for nearest point algorithm
+        Y[:-1] = 0
+        self.majorCycles = self.minorCycles = 0
+        sol, P, w = self.NPA(Y)
+        k = 1
+        maj, mino = self.majorCycles, self.minorCycles
+        while numpy.linalg.norm(sol- Y) > EPS:
+            print(repr(P))
+            print(repr(w))
+            print(sol[-1])
+            diff = (sol[-1] - Y[-1])[0]
+            print(diff)
+            print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles - maj, self.minorCycles - mino))
+            raw_input()
+            
+            P[-1,:] += diff
+            k += 1
+            Y = sol
+            
+            maj, mino = self.majorCycles, self.minorCycles
+            sol, P, w = self.NPA(Y, P, w)
+            
+            #break
+        self.objectiveValue = sol[-1]
+        print('main iterations: {0}'.format(k))
+        print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
     
-    def NDA(self):
+    def NPA(self, Y, P = None, w = None):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149."""
-        # find the initial point: minimize over last axis (original c objective function)
-        # (step 0)
-        direction = numpy.zeros(self.k+1)
-        direction[self.k] = 1
-        min_z = self.solveScalarization(direction)
-        print('step 0: P_J = {0}'.format(repr(min_z)))
         
-        Y = numpy.zeros((self.k+1,1))
-        Y[-1] = min_z[-1]
         print("Y = {0}".format(Y))
-        P = min_z.reshape((self.k+1,1)) - Y
-
-        w = numpy.ones((1,1),dtype=numpy.double)
+        if P is None:
+            P = -Y.reshape((self.k+1,1))
+        if w is None:
+            w = numpy.ones((1,1),dtype=numpy.double)
         X = numpy.empty((self.k+1,1), dtype=numpy.double)
         oldnormx = numpy.inf
         e1 = numpy.zeros((self.k+2,1),dtype=numpy.double)
         e1[0,0] = 1
-        majorCycles = minorCycles = 0
+        
         for i in itertools.count():
-            if i > 200:
-                print('200')
-                raw_input()
-                break
             print('\n\n**STEP 1 [iteration {0}'.format(i))
-            majorCycles += 1
+            self.majorCycles += 1
             # step 1
             numpy.dot(P, w, X)
-            print('step 1: X = {0}'.format(X))
+            #print('step 1: X = {0}'.format(repr(X)))
             normx = numpy.linalg.norm(X)
             if normx > oldnormx:
                 print("∥X∥ increased: {0} > {1}".format(normx, oldnormx))
                 raw_input()
             print('step 1: ∥X∥ = {0}'.format(normx))
             oldnormx = normx
-            print('step 1: P = {0}'.format(repr(P)))
-            print('step 1: w = {0}'.format(repr(w)))
+            #print('step 1: P = {0}'.format(repr(P)))
+            #print('step 1: w = {0}'.format(repr(w)))
             P_J = self.solveScalarization(X.ravel()).reshape((self.k+1,1)) - Y
-            
-            ans, sol = zeroInConvexHull([p.ravel() for p in numpy.hsplit(P, P.shape[1])])                
+                            
             if numpy.dot(X.T, P_J) > numpy.dot(X.T, X) -EPS:
                 print('stop in 1 (c)')
-                if not ans:
-                    print('WARNING CPLEX DOES NOT AGREE')
-                break
-            elif ans:
-                print('break cplex')
                 break
 
             P = numpy.hstack((P, P_J.reshape((self.k+1,1))))
-            print('step 1 (b): P_J = {0}'.format(repr(P_J)))
+            #print('step 1 (b): P_J = {0}'.format(repr(P_J)))
             w = numpy.vstack((w, 0))
-            print('step 1 (e): w = {0}'.format(repr(w)))
+            #print('step 1 (e): w = {0}'.format(repr(w)))
             for j in itertools.count():
-                if j > 100:
-                    print('100')
-                    raw_input()
-                    break
                 print('\n**STEP 2 [iteration {0}]'.format(j))
                 result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P.shape[1]), P)), e1)
                 u = result[0]
                 v = u / numpy.sum(u)
-                print("step 2 (a): v = {0}".format(repr(v)))
-                assert numpy.allclose(numpy.sum(v), 1)
-                if not numpy.allclose(numpy.dot( (numpy.ones((P.shape[1], P.shape[1])) + numpy.dot(P.T, P)), u), numpy.ones((P.shape[1],1))):
-                    print(numpy.dot( (numpy.ones((P.shape[1], P.shape[1])) + numpy.dot(P.T, P)), u) - numpy.ones((P.shape[1],1)))
-                    raw_input()
-                 
+                #print("step 2 (a): v = {0}".format(repr(v)))                 
                 if numpy.all(v > EPS):
                     w = v
                     break
-                
                 else:
-                    minorCycles += 1
+                    self.minorCycles += 1
                     POS = numpy.nonzero(v <= EPS) # 3 (a) corrected                    
                     print("step 3 (a): POS = {0}".format(repr(POS)))
                     #theta = min(1, numpy.min(w[POS]/(w[POS] - v[POS]))) # 3 (b)
@@ -159,19 +162,20 @@ class NDFDecoder(Decoder):
                     print("step 3 (c): θ = {0}".format(theta))
                     w = theta*w + (1-theta)*v # 3 (c)
                     w[numpy.nonzero(w<=EPS)] = 0 # 3 (d)
-                    print('step 3 (d): w = {0}'.format(repr(w)))
+                    #print('step 3 (d): w = {0}'.format(repr(w)))
                     firstZeroIndex = numpy.nonzero(w == 0)[0][0]
                     w = numpy.delete(w, firstZeroIndex, 0)
                     P = numpy.delete(P, firstZeroIndex, 1)
         
             
             #raw_input()    
-        print('major cycles: {0}    minor cycles: {1}'.format(majorCycles, minorCycles))
+        
         if normx < EPS:
-            print('solution*: {0}'.format(Y[-1][0]))
+            solution = Y
         else:
-            print('solution: {0}'.format(Y[-1].ravel() + numpy.dot(X.T, X).ravel() / X[-1].ravel()))
-        return majorCycles, minorCycles
+            solution = numpy.zeros((self.k+1,1))
+            solution[-1] = Y[-1] + numpy.dot(X.T, X) / X[-1]
+        return solution, P, w
 
     def solveScalarization(self, direction):
         assert direction.size == self.k+1
@@ -186,17 +190,26 @@ class NDFDecoder(Decoder):
 if __name__ == "__main__":
     from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
     from lpdecoding import simulate
-    interleaver = interleaver.Interleaver(repr = [1,4,3,2,0] )
+    #numpy.random.seed(1337)
+    inter = interleaver.Interleaver(repr = [1,0] )
     encoder = trellis.TD_InnerEncoder() # 4 state encoder
-    code = turbolike.StandardTurboCode(encoder, interleaver)
+    #interleaver = interleaver.randomQPP(4)
+    #inter = interleaver.lte_interleaver(40)
+    #encoder = trellis.LTE_Encoder()
+    code = turbolike.StandardTurboCode(encoder, inter)
+    
     decoder = NDFDecoder(code)
     ref_decoder =CplexTurboLikeDecoder(code, ip = False)
     
-    gen = simulate.AWGNSignalGenerator(code, snr = -1, round=1)
+    gen = simulate.AWGNSignalGenerator(code, snr = 1)
     llr = next(gen)
-    #llr = numpy.array([ 0.4, -0.6,  0.,  -0.1,  0.7,  1.8,  1.,   0.3, -2.2 , 0.7 , 2.5 , 1.8,  2.1,  0.5, -0.7, -0.4,  0.7,  0.6,  3.,  -0.6 , 2.4 ,-0.3 ,-0.8])
-    print(llr)
-    decoder.decode(llr)
+    llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
+    print(repr(llr))
     ref_decoder.decode(llr)
+    print('real: {0}'.format(ref_decoder.objectiveValue))
+    raw_input()
+    decoder.decode(llr)
+    print('solution: {0}'.format(decoder.objectiveValue))
+    
     print('real solution: {0}'.format(ref_decoder.objectiveValue))
     print(ref_decoder.solution)
