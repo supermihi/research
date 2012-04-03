@@ -191,11 +191,11 @@ if __name__ == "__main__":
     from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
     from lpdecoding import simulate
     #numpy.random.seed(1337)
-    inter = interleaver.Interleaver(repr = [1,0] )
-    encoder = trellis.TD_InnerEncoder() # 4 state encoder
-    #interleaver = interleaver.randomQPP(4)
-    #inter = interleaver.lte_interleaver(40)
-    #encoder = trellis.LTE_Encoder()
+    #inter = interleaver.Interleaver(repr = [1,0] )
+    #encoder = trellis.TD_InnerEncoder() # 4 state encoder
+    
+    inter = interleaver.lte_interleaver(40)
+    encoder = trellis.LTE_Encoder()
     code = turbolike.StandardTurboCode(encoder, inter)
     
     decoder = NDFDecoder(code)
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     
     gen = simulate.AWGNSignalGenerator(code, snr = 1)
     llr = next(gen)
-    llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
+    #llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
     print(repr(llr))
     ref_decoder.decode(llr)
     print('real: {0}'.format(ref_decoder.objectiveValue))
