@@ -13,6 +13,8 @@ from lpdecoding.algorithms import path
 import itertools
 import numpy
 EPS = 1e-10
+import logging
+logging.basicConfig(level=logging.INFO)
         
         
 def zeroInConvexHull(points):
@@ -78,38 +80,43 @@ class NDFDecoder(Decoder):
         direction = numpy.zeros(self.k+1)
         direction[-1] = 1
         Y = self.solveScalarization(direction).reshape((self.k+1,1))
+        if numpy.linalg.norm(Y[:-1]) < 1e-8:
+            logging.info("initial point is feasible -> yeah!")
+            self.solution = Y
+            self.objectiveValue = Y[-1]
+            return
         # set all but last component to 0 -> initial Y for nearest point algorithm
         Y[:-1] = 0
+        logging.info("Initial reference point: Y={0}".format(repr(Y)))
+        cand_z = Y[-1]
         self.majorCycles = self.minorCycles = 0
-        sol, P, w = self.NPA(Y)
-        k = 1
-        maj, mino = self.majorCycles, self.minorCycles
-        while numpy.linalg.norm(sol- Y) > EPS:
-            print(repr(P))
-            print(repr(w))
-            print(sol[-1])
-            diff = (sol[-1] - Y[-1])[0]
-            print(diff)
-            print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles - maj, self.minorCycles - mino))
+        P = w = None
+        i = 1
+        while True:
+            sol, Px, wx = self.NPA(Y, P, w)
+            solution = numpy.zeros((self.k+1,1))
+            if numpy.linalg.norm(sol - Y) < EPS:
+                break
+            newY = numpy.zeros((self.k+1,1))
+            newY[-1] = numpy.dot((Y-sol).T, sol) / (Y-sol)[-1]
+            Y = newY
+            print(Y[-1])
             raw_input()
             
-            P[-1,:] += diff
-            k += 1
-            Y = sol
-            
-            maj, mino = self.majorCycles, self.minorCycles
-            sol, P, w = self.NPA(Y, P, w)
             
             #break
         self.objectiveValue = sol[-1]
-        print('main iterations: {0}'.format(k))
+        print('main iterations: {0}'.format(i))
         print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
     
     def NPA(self, Y, P = None, w = None):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
-        Mathematical Programming 11 (1976), pp.128-149."""
+        Mathematical Programming 11 (1976), pp.128-149.
+        Y: reference point
+        P: matrix of corral points (column-wise), if given
+        w: weight vector, if P is given"""
         
-        print("Y = {0}".format(Y))
+        logging.debug("starting NPA with Y = {0}".format(Y))
         if P is None:
             P = -Y.reshape((self.k+1,1))
         if w is None:
@@ -120,7 +127,7 @@ class NDFDecoder(Decoder):
         e1[0,0] = 1
         
         for i in itertools.count():
-            print('\n\n**STEP 1 [iteration {0}'.format(i))
+            logging.debug('\n\n**STEP 1 [iteration {0}'.format(i))
             self.majorCycles += 1
             # step 1
             numpy.dot(P, w, X)
@@ -129,14 +136,14 @@ class NDFDecoder(Decoder):
             if normx > oldnormx:
                 print("∥X∥ increased: {0} > {1}".format(normx, oldnormx))
                 raw_input()
-            print('step 1: ∥X∥ = {0}'.format(normx))
+            logging.debug('step 1: ∥X∥ = {0}'.format(normx))
             oldnormx = normx
             #print('step 1: P = {0}'.format(repr(P)))
             #print('step 1: w = {0}'.format(repr(w)))
             P_J = self.solveScalarization(X.ravel()).reshape((self.k+1,1)) - Y
                             
             if numpy.dot(X.T, P_J) > numpy.dot(X.T, X) -EPS:
-                print('stop in 1 (c)')
+                logging.debug('stop in 1 (c)')
                 break
 
             P = numpy.hstack((P, P_J.reshape((self.k+1,1))))
@@ -144,7 +151,7 @@ class NDFDecoder(Decoder):
             w = numpy.vstack((w, 0))
             #print('step 1 (e): w = {0}'.format(repr(w)))
             for j in itertools.count():
-                print('\n**STEP 2 [iteration {0}]'.format(j))
+                logging.debug('\n**STEP 2 [iteration {0}]'.format(j))
                 result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P.shape[1]), P)), e1)
                 u = result[0]
                 v = u / numpy.sum(u)
@@ -155,11 +162,11 @@ class NDFDecoder(Decoder):
                 else:
                     self.minorCycles += 1
                     POS = numpy.nonzero(v <= EPS) # 3 (a) corrected                    
-                    print("step 3 (a): POS = {0}".format(repr(POS)))
+                    logging.debug("step 3 (a): POS = {0}".format(repr(POS)))
                     #theta = min(1, numpy.min(w[POS]/(w[POS] - v[POS]))) # 3 (b)
                     theta = min(1, numpy.max(v[POS]/(v[POS] - w[POS]))) # 3 (b)
                     
-                    print("step 3 (c): θ = {0}".format(theta))
+                    logging.debug("step 3 (c): θ = {0}".format(theta))
                     w = theta*w + (1-theta)*v # 3 (c)
                     w[numpy.nonzero(w<=EPS)] = 0 # 3 (d)
                     #print('step 3 (d): w = {0}'.format(repr(w)))
@@ -173,8 +180,7 @@ class NDFDecoder(Decoder):
         if normx < EPS:
             solution = Y
         else:
-            solution = numpy.zeros((self.k+1,1))
-            solution[-1] = Y[-1] + numpy.dot(X.T, X) / X[-1]
+            solution = X + Y
         return solution, P, w
 
     def solveScalarization(self, direction):
