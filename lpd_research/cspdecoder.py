@@ -14,7 +14,7 @@ import itertools
 import numpy
 EPS = 1e-10
 import logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
         
         
 def zeroInConvexHull(points):
@@ -63,14 +63,6 @@ class NDFDecoder(Decoder):
             if not hasattr(t2[s2], "g_coeffs"):
                 t2[s2].g_coeffs = { INPUT: [], PARITY: [] }
             t2[s2].g_coeffs[l2].append( (i, -1) )
-        for encoder in self.code.encoders:
-            trellis = encoder.trellis
-            print(encoder)
-            for segment in trellis:
-                try:
-                    print(segment.g_coeffs)
-                except AttributeError:
-                    print('segment {0}: no coeffs'.format(segment.pos))
 
         
     def solve(self):
@@ -80,6 +72,9 @@ class NDFDecoder(Decoder):
         direction = numpy.zeros(self.k+1)
         direction[-1] = 1
         Y = self.solveScalarization(direction).reshape((self.k+1,1))
+        P = Y.copy()
+        P[-1][0] = 0
+        w = numpy.ones((1,1), dtype = numpy.double)
         if numpy.linalg.norm(Y[:-1]) < 1e-8:
             logging.info("initial point is feasible -> yeah!")
             self.solution = Y
@@ -88,24 +83,44 @@ class NDFDecoder(Decoder):
         # set all but last component to 0 -> initial Y for nearest point algorithm
         Y[:-1] = 0
         logging.info("Initial reference point: Y={0}".format(repr(Y)))
-        cand_z = Y[-1]
         self.majorCycles = self.minorCycles = 0
-        P = w = None
-        i = 1
+        #P = w = None
+        #oldZ = -1000
+        oldZ = Y[-1]
+        e1_test = numpy.zeros((self.k+1,1),dtype=numpy.double)
+        e1_test[0,0] = 1
+        i = 0
         while True:
-            sol, Px, wx = self.NPA(Y, P, w)
-            solution = numpy.zeros((self.k+1,1))
-            if numpy.linalg.norm(sol - Y) < EPS:
+            X, P, w = self.NPA(Y, P, w)
+            P_reduced = P[:-1,:]
+            test = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P_reduced.shape[1]), P_reduced)), e1_test)
+            u_test = test[0]
+            v_test = u_test / numpy.sum(u_test)
+            i += 1
+            v = X - Y
+            if numpy.linalg.norm(v) < EPS:
+                print('done(v)')
                 break
-            newY = numpy.zeros((self.k+1,1))
-            newY[-1] = numpy.dot((Y-sol).T, sol) / (Y-sol)[-1]
-            Y = newY
-            print(Y[-1])
-            raw_input()
+            s = X.copy()
+            logging.info("X={0}".format(repr(X)))
+            logging.info("Y={0}".format(repr(Y)))
+            logging.info("w={0}".format(w))
+            logging.info("v[-1]={0}".format(v[-1]))
+            z_d = (numpy.dot(X.T, v) / v[-1]).ravel()
+            if abs(z_d - oldZ) < 1e-8:
+                print('done')
+                break
+            P[-1,:] += oldZ - z_d
+            oldZ = z_d
+            s[-1] -= z_d
+            z = X - s
+            Y = z
+            
+            #raw_input()
             
             
             #break
-        self.objectiveValue = sol[-1]
+        self.objectiveValue = Y[-1]
         print('main iterations: {0}'.format(i))
         print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
     
@@ -196,11 +211,11 @@ class NDFDecoder(Decoder):
 if __name__ == "__main__":
     from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
     from lpdecoding import simulate
-    #numpy.random.seed(1337)
+    numpy.random.seed(1337)
     #inter = interleaver.Interleaver(repr = [1,0] )
     #encoder = trellis.TD_InnerEncoder() # 4 state encoder
     
-    inter = interleaver.lte_interleaver(40)
+    inter = interleaver.lte_interleaver(64)
     encoder = trellis.LTE_Encoder()
     code = turbolike.StandardTurboCode(encoder, inter)
     
@@ -208,14 +223,13 @@ if __name__ == "__main__":
     ref_decoder =CplexTurboLikeDecoder(code, ip = False)
     
     gen = simulate.AWGNSignalGenerator(code, snr = 1)
-    llr = next(gen)
-    #llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
-    print(repr(llr))
-    ref_decoder.decode(llr)
-    print('real: {0}'.format(ref_decoder.objectiveValue))
-    raw_input()
-    decoder.decode(llr)
-    print('solution: {0}'.format(decoder.objectiveValue))
+    for i in range(10):
+        llr = next(gen)
+        #llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
+        logging.debug("llr vector: {0}".format(repr(llr)))
+        ref_decoder.decode(llr)
+        print('real: {0}'.format(ref_decoder.objectiveValue))
+        decoder.decode(llr)
+        print('solution: {0}'.format(decoder.objectiveValue))
     
-    print('real solution: {0}'.format(ref_decoder.objectiveValue))
-    print(ref_decoder.solution)
+        logging.debug('real solution: {0}'.format(ref_decoder.objectiveValue))
