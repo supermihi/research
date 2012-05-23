@@ -10,10 +10,9 @@ from lpdecoding.core import Decoder
 from lpdecoding.codes import trellis, turbolike, interleaver
 from lpdecoding.codes.trellis import INPUT, PARITY
 from lpdecoding.algorithms import path
-import itertools
+import itertools, os, logging
 import numpy
 EPS = 1e-10
-import logging
 logging.basicConfig(level=logging.ERROR)
         
         
@@ -47,7 +46,31 @@ def zeroInConvexHull(points):
     cplex.solve()
     distance = numpy.sqrt(cplex.solution.get_objective_value())
     return distance < 1e-6, cplex.solution.get_values(x)
-        
+
+def solveLT(a, b):
+    """Return x where x solves ax = b if a is a lower triangular matrix."""
+    x = numpy.empty((a.shape[0], 1))             
+    for i in xrange(a.shape[0]):
+        x[i,0] = (b[i,0] - numpy.dot(x[:i,0], a[i,:i])) / a[i,i]
+#    x_ref = numpy.linalg.solve(a, b)
+#    if not numpy.allclose(x_ref, x):
+#        print(a)
+#        print(b)
+#        raise RuntimeError("SolveLT: {0} != {1}".format(x, x_ref))
+    return x
+
+def solveUT(a, b):
+    """Return x where x solves ax = b if a is an upper triangular matrix."""
+    x = numpy.empty((a.shape[0], 1))             
+    for i in xrange(a.shape[0]-1, -1, -1):
+        x[i,0] = (b[i,0] - numpy.dot(x[i+1:,0], a[i,i+1:])) / a[i,i]
+#    x_ref = numpy.linalg.solve(a, b)
+#    if not numpy.allclose(x_ref, x):
+#        print(a)
+#        print(b)
+#        raise RuntimeError("SolveLT: {0} != {1}".format(x, x_ref))
+    return x
+    
 class NDFDecoder(Decoder):
     """Nondominated Facet Decoder."""
     def __init__(self, code):
@@ -67,7 +90,9 @@ class NDFDecoder(Decoder):
         
     def solve(self):
         self.code.setCost(self.llrVector)
-        
+        self.lstsq_time = self.sp_time = 0
+        tmp = os.times()
+        time_a = tmp[0] + tmp[2]
         # find point with minimum cost in z-direction
         direction = numpy.zeros(self.k+1)
         direction[-1] = 1
@@ -81,6 +106,7 @@ class NDFDecoder(Decoder):
             self.objectiveValue = Y[-1]
             return
         # set all but last component to 0 -> initial Y for nearest point algorithm
+        
         Y[:-1] = 0
         logging.info("Initial reference point: Y={0}".format(repr(Y)))
         self.majorCycles = self.minorCycles = 0
@@ -91,11 +117,8 @@ class NDFDecoder(Decoder):
         e1_test[0,0] = 1
         i = 0
         while True:
-            X, P, w = self.NPA(Y, P, w)
-            P_reduced = P[:-1,:]
-            test = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P_reduced.shape[1]), P_reduced)), e1_test)
-            u_test = test[0]
-            v_test = u_test / numpy.sum(u_test)
+            #X, P, w = self.NPA(Y, P, w)
+            X, P, w = self.NPA(Y, methodD = False)
             i += 1
             v = X - Y
             if numpy.linalg.norm(v) < EPS:
@@ -122,20 +145,30 @@ class NDFDecoder(Decoder):
             #break
         self.objectiveValue = Y[-1]
         print('main iterations: {0}'.format(i))
+        tmp = os.times()
+        print('total time: {}; least square solution time: {}; shortest path time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time))
         print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
     
-    def NPA(self, Y, P = None, w = None):
+    def NPA(self, Y, P = None, w = None, R = None, methodD = False):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         Y: reference point
         P: matrix of corral points (column-wise), if given
-        w: weight vector, if P is given"""
+        w: weight vector, if P is given
+        R: R from Method D, if P and w are given"""
         
         logging.debug("starting NPA with Y = {0}".format(Y))
         if P is None:
+            assert w is None and R is None
             P = -Y.reshape((self.k+1,1))
-        if w is None:
             w = numpy.ones((1,1),dtype=numpy.double)
+            if methodD:
+                R = numpy.array([[numpy.sqrt(1+numpy.sum(numpy.square(P)))]])
+        else:
+            assert w is not None
+            if methodD:
+                assert R is not None            
+            
         X = numpy.empty((self.k+1,1), dtype=numpy.double)
         oldnormx = numpy.inf
         e1 = numpy.zeros((self.k+2,1),dtype=numpy.double)
@@ -148,7 +181,7 @@ class NDFDecoder(Decoder):
             numpy.dot(P, w, X)
             #print('step 1: X = {0}'.format(repr(X)))
             normx = numpy.linalg.norm(X)
-            if normx > oldnormx:
+            if normx > oldnormx + EPS:
                 print("∥X∥ increased: {0} > {1}".format(normx, oldnormx))
                 raw_input()
             logging.debug('step 1: ∥X∥ = {0}'.format(normx))
@@ -160,16 +193,33 @@ class NDFDecoder(Decoder):
             if numpy.dot(X.T, P_J) > numpy.dot(X.T, X) -EPS:
                 logging.debug('stop in 1 (c)')
                 break
-
+            if methodD:
+                rhs = numpy.ones((R.shape[0],1)) + numpy.dot(P.T, P_J)
+                r = solveLT(R.T, rhs)
+                r = numpy.append(r, numpy.sqrt(1 + numpy.dot(P_J.T, P_J) - numpy.dot(r.T, r)))
+                R = numpy.vstack( (R, numpy.zeros((1, R.shape[0]))) )
+                R = numpy.hstack( (R, r.reshape((R.shape[1] + 1, 1))) )
+                logging.info("{0}x{1} R={2}".format(R.shape[0], R.shape[1], repr(R)))
+                logging.info("r={0}".format(r))
             P = numpy.hstack((P, P_J.reshape((self.k+1,1))))
             #print('step 1 (b): P_J = {0}'.format(repr(P_J)))
             w = numpy.vstack((w, 0))
             #print('step 1 (e): w = {0}'.format(repr(w)))
+            
             for j in itertools.count():
                 logging.debug('\n**STEP 2 [iteration {0}]'.format(j))
-                result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P.shape[1]), P)), e1)
-                u = result[0]
+                tmp = os.times()
+                time_a = tmp[0] + tmp[2]
+                if methodD:
+                    ubar = solveLT(R.T, numpy.ones((R.shape[0],1)))
+                    u= solveUT(R, ubar)
+                else:
+                    result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(P.shape[1]), P)), e1)
+                    u = result[0]
                 v = u / numpy.sum(u)
+                tmp = os.times()
+                self.lstsq_time += tmp[0] + tmp[2] - time_a
+                
                 #print("step 2 (a): v = {0}".format(repr(v)))                 
                 if numpy.all(v > EPS):
                     w = v
@@ -188,6 +238,20 @@ class NDFDecoder(Decoder):
                     firstZeroIndex = numpy.nonzero(w == 0)[0][0]
                     w = numpy.delete(w, firstZeroIndex, 0)
                     P = numpy.delete(P, firstZeroIndex, 1)
+                    
+                    # method D
+                    if methodD:
+                        I = firstZeroIndex
+                        R = numpy.delete(R, I, 1)
+                        while I < R.shape[1]:
+                            a = R[I,I]
+                            b = R[I+1,I]
+                            c = numpy.sqrt(a*a+b*b)
+                            R[I], R[I+1] = (a*R[I] + b*R[I+1])/c, (-b*R[I] + a*R[I+1])/c
+                            I += 1
+                        # remove last row
+                        R = numpy.delete(R, -1, 0)
+                        logging.info("new R: {0}".format(repr(R)))
         
             
             #raw_input()    
@@ -204,8 +268,12 @@ class NDFDecoder(Decoder):
         lamb = direction[-1]
         g_result = numpy.zeros(self.k, dtype = numpy.double)
         c_result = 0
+        tmp = os.times()
+        time_a = tmp[0] + tmp[2]
         for enc in self.code.encoders:
             c_result += path.shortestPathScalarization(enc.trellis, lamb, mu, g_result)
+        tmp = os.times()
+        self.sp_time += tmp[0] + tmp[2] - time_a
         return numpy.hstack((g_result, c_result))
 
 if __name__ == "__main__":
@@ -215,7 +283,7 @@ if __name__ == "__main__":
     #inter = interleaver.Interleaver(repr = [1,0] )
     #encoder = trellis.TD_InnerEncoder() # 4 state encoder
     
-    inter = interleaver.lte_interleaver(64)
+    inter = interleaver.lte_interleaver(40)
     encoder = trellis.LTE_Encoder()
     code = turbolike.StandardTurboCode(encoder, inter)
     
@@ -227,7 +295,11 @@ if __name__ == "__main__":
         llr = next(gen)
         #llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
         logging.debug("llr vector: {0}".format(repr(llr)))
+        tmp = os.times()
+        time_a = tmp[0] + tmp[2]
         ref_decoder.decode(llr)
+        tmp = os.times()
+        print('ref decoding time: {}'.format(tmp[0] + tmp[2] - time_a))
         print('real: {0}'.format(ref_decoder.objectiveValue))
         decoder.decode(llr)
         print('solution: {0}'.format(decoder.objectiveValue))
