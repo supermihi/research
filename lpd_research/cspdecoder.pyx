@@ -7,11 +7,14 @@
 # published by the Free Software Foundation
 from __future__ import division, print_function
 from lpdecoding.core import Decoder
-from lpdecoding.codes import trellis, turbolike, interleaver
+from lpdecoding.codes import turbolike, interleaver
+from lpdecoding.codes.ctrellis cimport Trellis 
+from lpdecoding.algorithms.path cimport shortestPathScalarization 
 from lpdecoding.codes.trellis import INPUT, PARITY
-from lpdecoding.algorithms import path
-import itertools, os, logging
+import itertools, logging
 import numpy
+cimport numpy
+import os
 EPS = 1e-10
 logging.basicConfig(level=logging.ERROR)
         
@@ -47,21 +50,20 @@ def zeroInConvexHull(points):
     distance = numpy.sqrt(cplex.solution.get_objective_value())
     return distance < 1e-6, cplex.solution.get_values(x)
 
-def solveLT(a, b):
+cdef numpy.ndarray[dtype=numpy.double_t, ndim=2] solveLT(numpy.ndarray[ndim=2, dtype=numpy.double_t] a,
+                                                         numpy.ndarray[ndim=2, dtype=numpy.double_t] b):
     """Return x where x solves ax = b if a is a lower triangular matrix."""
-    x = numpy.empty((a.shape[0], 1))             
+    cdef numpy.ndarray x = numpy.empty((a.shape[0], 1))
+    cdef int i             
     for i in xrange(a.shape[0]):
         x[i,0] = (b[i,0] - numpy.dot(x[:i,0], a[i,:i])) / a[i,i]
-#    x_ref = numpy.linalg.solve(a, b)
-#    if not numpy.allclose(x_ref, x):
-#        print(a)
-#        print(b)
-#        raise RuntimeError("SolveLT: {0} != {1}".format(x, x_ref))
     return x
 
-def solveUT(a, b):
+cdef numpy.ndarray[dtype=numpy.double_t, ndim=2] solveUT(numpy.ndarray[ndim=2, dtype=numpy.double_t] a,
+                                                         numpy.ndarray[ndim=2, dtype=numpy.double_t] b):
     """Return x where x solves ax = b if a is an upper triangular matrix."""
-    x = numpy.empty((a.shape[0], 1))             
+    cdef numpy.ndarray x = numpy.empty((a.shape[0], 1))
+    cdef int i             
     for i in xrange(a.shape[0]-1, -1, -1):
         x[i,0] = (b[i,0] - numpy.dot(x[i+1:,0], a[i,i+1:])) / a[i,i]
 #    x_ref = numpy.linalg.solve(a, b)
@@ -70,27 +72,28 @@ def solveUT(a, b):
 #        print(b)
 #        raise RuntimeError("SolveLT: {0} != {1}".format(x, x_ref))
     return x
-    
-class NDFDecoder(Decoder):
+labelStr = { INPUT: "input", PARITY: "parity"}
+cdef class NDFDecoder(Decoder):
     """Nondominated Facet Decoder."""
     def __init__(self, code):
         Decoder.__init__(self)
         self.code = code
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
+        
         for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
-            if not hasattr(t1[s1], "g_coeffs"):
-                t1[s1].g_coeffs = { INPUT: [], PARITY: [] }
-            t1[s1].g_coeffs[l1].append( (i, 1) )
-                
-            if not hasattr(t2[s2], "g_coeffs"):
-                t2[s2].g_coeffs = { INPUT: [], PARITY: [] }
-            t2[s2].g_coeffs[l2].append( (i, -1) )
+            setattr(t1[s1], "g_{0}_index".format(labelStr[l1]), i)
+            setattr(t1[s1], "g_{0}".format(labelStr[l1]), 1)
+            #t1[s1].g_coeffs[l1].append( (i, 1) )
+            
+            setattr(t2[s2], "g_{0}_index".format(labelStr[l2]), i)
+            setattr(t2[s2], "g_{0}".format(labelStr[l2]), -1)   
+            #t2[s2].g_coeffs[l2].append( (i, -1) )
 
         
-    def solve(self):
+    cpdef solve(self):
         self.code.setCost(self.llrVector)
-        self.lstsq_time = self.sp_time = 0
+        self.lstsq_time = self.sp_time = self.omg_time = 0
         tmp = os.times()
         time_a = tmp[0] + tmp[2]
         # find point with minimum cost in z-direction
@@ -118,7 +121,7 @@ class NDFDecoder(Decoder):
         i = 0
         while True:
             #X, P, w = self.NPA(Y, P, w)
-            X, P, w = self.NPA(Y, methodD = False)
+            X, P, w = self.NPA(Y, methodD = True)#False)
             i += 1
             v = X - Y
             if numpy.linalg.norm(v) < EPS:
@@ -146,10 +149,14 @@ class NDFDecoder(Decoder):
         self.objectiveValue = Y[-1]
         print('main iterations: {0}'.format(i))
         tmp = os.times()
-        print('total time: {}; least square solution time: {}; shortest path time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time))
+        print('total time: {}; least square solution time: {}; shortest path time: {}; omg time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time, self.omg_time))
         print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
     
-    def NPA(self, Y, P = None, w = None, R = None, methodD = False):
+    def NPA(self,
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] Y,
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] P = None,
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] w = None,
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] R = None, methodD = False):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         Y: reference point
@@ -157,6 +164,9 @@ class NDFDecoder(Decoder):
         w: weight vector, if P is given
         R: R from Method D, if P and w are given"""
         
+        cdef numpy.ndarray[ndim=2, dtype=numpy.double_t] ubar, u, X, e1
+        cdef double oldnormx
+        cdef int i
         logging.debug("starting NPA with Y = {0}".format(Y))
         if P is None:
             assert w is None and R is None
@@ -271,37 +281,22 @@ class NDFDecoder(Decoder):
         tmp = os.times()
         time_a = tmp[0] + tmp[2]
         for enc in self.code.encoders:
-            c_result += path.shortestPathScalarization(enc.trellis, lamb, mu, g_result)
+            c_result += shortestPathScalarization(enc.trellis, lamb, mu, g_result)
         tmp = os.times()
         self.sp_time += tmp[0] + tmp[2] - time_a
         return numpy.hstack((g_result, c_result))
 
-if __name__ == "__main__":
-    from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
-    from lpdecoding import simulate
-    numpy.random.seed(1337)
-    #inter = interleaver.Interleaver(repr = [1,0] )
-    #encoder = trellis.TD_InnerEncoder() # 4 state encoder
-    
-    inter = interleaver.lte_interleaver(40)
-    encoder = trellis.LTE_Encoder()
-    code = turbolike.StandardTurboCode(encoder, inter)
-    
-    decoder = NDFDecoder(code)
-    ref_decoder =CplexTurboLikeDecoder(code, ip = False)
-    
-    gen = simulate.AWGNSignalGenerator(code, snr = 1)
-    for i in range(10):
-        llr = next(gen)
-        #llr = numpy.array([-0.2, -0.8,  1.2,  1.1,  1.2,  0.4,  0. ,  0.2, -0. , -0.9, -0.2, -1.3, -0.5,  0.8])
-        logging.debug("llr vector: {0}".format(repr(llr)))
-        tmp = os.times()
-        time_a = tmp[0] + tmp[2]
-        ref_decoder.decode(llr)
-        tmp = os.times()
-        print('ref decoding time: {}'.format(tmp[0] + tmp[2] - time_a))
-        print('real: {0}'.format(ref_decoder.objectiveValue))
-        decoder.decode(llr)
-        print('solution: {0}'.format(decoder.objectiveValue))
-    
-        logging.debug('real solution: {0}'.format(ref_decoder.objectiveValue))
+class NDFInteriorDecoder(Decoder):
+    def __init__(self, code):
+        Decoder.__init__(self)
+        self.code = code
+        self.constraints = code.equalityPairs()
+        self.k = len(self.constraints)
+        for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
+            if not hasattr(t1[s1], "g_coeffs"):
+                t1[s1].g_coeffs = { INPUT: [], PARITY: [] }
+            t1[s1].g_coeffs[l1].append( (i, 1) )
+                
+            if not hasattr(t2[s2], "g_coeffs"):
+                t2[s2].g_coeffs = { INPUT: [], PARITY: [] }
+            t2[s2].g_coeffs[l2].append( (i, -1) )
