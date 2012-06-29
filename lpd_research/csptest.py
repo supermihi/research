@@ -13,8 +13,8 @@ if __name__ == "__main__":
     from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
     from lpdecoding import simulate
     numpy.random.seed(1337)
-    #inter = interleaver.Interleaver(repr = [1,0] )
-    #encoder = trellis.TD_InnerEncoder() # 4 state encoder
+    inter = interleaver.Interleaver(repr = [1,0,4,2,3] )
+    encoder = trellis.TD_InnerEncoder() # 4 state encoder
     
     inter = interleaver.lte_interleaver(40)
     encoder = trellis.LTE_Encoder()
