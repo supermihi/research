@@ -13,7 +13,7 @@ from lpdecoding.codes import turbolike, interleaver
 from lpdecoding.codes.ctrellis cimport Trellis 
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
 from lpdecoding.codes.trellis import INPUT, PARITY
-from libc.math cimport sqrt 
+from libc.math cimport sqrt, abs 
 import itertools, logging
 import numpy
 cimport numpy
@@ -118,20 +118,24 @@ cdef class NDFDecoder(Decoder):
         
     cpdef solve(self):
         cdef:
-            numpy.double_t[:] direction
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] w, v, Y, X, s
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] P, R
-            numpy.ndarray[ndim=1, dtype=numpy.int_t] S
+            numpy.double_t[:] direction = numpy.zeros(self.k+1)
+            numpy.ndarray[ndim=1, dtype=numpy.double_t] \
+                w = numpy.empty(self.k+2),\
+                v = numpy.empty(self.k+2),\
+                Y = numpy.zeros(self.k+1),\
+                X = numpy.empty(self.k+1)
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] P = numpy.empty((self.k+1, self.k+2)), R = numpy.empty((self.k+2,self.k+2))
+            numpy.ndarray[ndim=1, dtype=numpy.int_t] S = numpy.zeros(self.k+2, dtype=numpy.int)
+            numpy.ndarray[ndim=1,dtype=numpy.uint8_t,cast=True] Sfree = numpy.ones(self.k+2,dtype=numpy.bool)
             double oldZ, z_d, a
-            int i, k
+            int i, k, lenS = 1
+        
         self.code.setCost(self.llrVector)
         self.lstsq_time = self.sp_time = self.omg_time = 0
         tmp = os.times()
         time_a = tmp[0] + tmp[2]
         # find point with minimum cost in z-direction
-        direction = numpy.zeros(self.k+1)
         direction[-1] = 1
-        Y = numpy.zeros(self.k+1)
         self.solveScalarization(direction, Y)
         if norm(Y, self.k) < 1e-8:
             logging.info("initial point is feasible -> yeah!")
@@ -142,45 +146,50 @@ cdef class NDFDecoder(Decoder):
         for k in range(self.k):
             Y[k] = 0
         self.majorCycles = self.minorCycles = 0
-        P = w = R = S = None
+
         #oldZ = -1000
         oldZ = Y[-1]
         i = 0
         v= numpy.empty(self.k+1)
         while True:
-            #X, P, w = self.NPA(Y, P, w)
-            #ret = self.NPA(Y, P, S, w, R, True)
-            X, P, S, w, R = self.NPA(Y, None, None, None, None)
+            # initialize data arrays for NFA
+            #*P[:,0] = -Y
+            for k in range(self.k+1):
+                P[k,0] = -Y[k]
+            Sfree[0] = False
+            for k in range(1, self.k+2):
+                Sfree[k] = True
+            w[0] = 1
+            R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
+            lenS = 1
+            S[0] = 0
+            lenS = self.NPA(Y, P, S, Sfree, w, R, lenS, X)
             i += 1
             for k in range(self.k+1):
                 v[k] = X[k] - Y[k]
             if norm(v, self.k+1) < EPS:
-                print('done(v)')
+                #print('done(v)')
                 break
             z_d = dot(X, v, self.k+1) / v[-1]
-            if numpy.abs(z_d - oldZ) < 1e-8:
-                print('done')
+            if numpy.abs(z_d-oldZ) < EPS:
+                #print('done')
                 break
-            s = X.copy()
-            for k in range(self.k+2):
-                P[-1,k] += oldZ - z_d
-            oldZ = z_d
-            s[-1] -= z_d
-            for k in range(self.k+1):
-                Y[k] = X[k] - s[k]
-
+            Y[-1] = z_d 
         self.objectiveValue = Y[-1]
-        print('main iterations: {0}'.format(i))
+        #print('main iterations: {0}'.format(i))
         tmp = os.times()
-        print('total time: {}; least square solution time: {}; shortest path time: {}; omg time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time, self.omg_time))
-        print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
+        #print('total time: {}; least square solution time: {}; shortest path time: {}; omg time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time, self.omg_time))
+        #print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
     
-    cdef object NPA(self,
+    cdef int NPA(self,
             numpy.ndarray[ndim=1, dtype=numpy.double_t] Y,
             numpy.ndarray[ndim=2, dtype=numpy.double_t] P,
             numpy.ndarray[ndim=1, dtype=numpy.int_t] S,
+            numpy.ndarray[ndim=1, dtype=numpy.uint8_t, cast = True] Sfree,
             numpy.ndarray[ndim=1, dtype=numpy.double_t] w,
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] R):
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] R,
+            int lenS,
+            numpy.ndarray[ndim=1, dtype=numpy.double_t] X) except -1:
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         Y: reference point
@@ -189,35 +198,13 @@ cdef class NDFDecoder(Decoder):
         R: R from Method D, if P and w are given"""
         # type definitions
         cdef:
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] v, X, P_J, space1, space2, space3
-            double normx, oldnormx, time_a, a, b, c, theta
+            numpy.ndarray[ndim=1, dtype=numpy.double_t] P_J, space1, space2, space3
+            double normx, oldnormx, a, b, c, theta
             int majorCycle = 0, minorCycle = 0, \
-                i, j, k, l, \
-                newIndex = 1, \
-                lenS = 1, IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
+                i, j, k, newIndex = 1, \
+                IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
             bint cond = False
-            # stores which indices are free for S
-            numpy.ndarray[ndim=1,dtype=numpy.uint8_t,cast=True] Sfree = numpy.ones(self.k+2,dtype=numpy.bool)
-            object tmptime
-
-        if P is None:
-            P = numpy.empty((self.k+1, self.k+2))
-            a = dot(Y, Y, self.k+1)
-            #*P[:,0] = -Y
-            for k in range(self.k+1):
-                P[k,0] = -Y[k]
-            S = numpy.zeros(self.k+2, dtype=numpy.int)
-            Sfree[0] = False
-            w = numpy.empty(self.k+2)
-            v = numpy.empty(self.k+2)
-            w[0] = 1
-            R = numpy.empty((self.k+2,self.k+2))
-            R[0,0] = sqrt(1+a)
-        else:
-            for k in S:
-                Sfree[k] = False
-            lenS = S.size            
-        X = numpy.empty(self.k+1)
+  
         P_J = numpy.empty(self.k+1)
         oldnormx = 1e20
         space1 = numpy.empty(self.k+2, dtype=numpy.double)
@@ -226,6 +213,7 @@ cdef class NDFDecoder(Decoder):
         while True:
             majorCycle += 1
             self.majorCycles += 1
+            
             #*numpy.dot(P[:,S], w[S], X)
             for i in range(self.k+1):
                 X[i] = 0
@@ -233,25 +221,40 @@ cdef class NDFDecoder(Decoder):
                     X[i] += P[i,S[j]]*w[S[j]]
             #*
             normx = norm(X, self.k+1)
-            if normx > oldnormx + EPS:
-                print("∥X∥ increased: {0} > {1}".format(normx, oldnormx))
-                raw_input()
+            if normx > oldnormx+EPS:
+                print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
+                break
+            if abs(normx - oldnormx) <EPS and normx < 1e-6:
+                #print("no norm change in cycle {0}".format(majorCycle))
+                break
             oldnormx = normx
 
             for k in range(self.k+1):
                 P_J[k] = 0
+            if not (X[-1] <10) and not (X[-1]) > 10:
+                print('what the...')
+                print(X)
+                print(w[S[:lenS]])
+                print(lenS)
+                print(S)
+                print(majorCycle)
+                print(minorCycle)
+                print(R[S][:,S])
             self.solveScalarization(X, P_J)
             P_J[self.k] -= Y[self.k]
-            a = dot(X, P_J, self.k+1)
             b = dot(P_J, P_J, self.k+1)
-            if a > normx*normx - EPS:
+            if dot(X, P_J, self.k+1) > normx*normx - 1e-12*sqrt(self.k):
                 #logging.debug('stop in 1 (c)')
                 break
             #*newIndex = numpy.flatnonzero(Sfree)[0]
+            newIndex = -1
             for k in range(self.k+2):
                 if Sfree[k] == 1:
                     newIndex = k
                     break
+            if newIndex == -1:
+                print('no free indexes .. what?')
+                return -1
             #*rhs= P[:,S].T*P_J
             for i in range(lenS):
                 space2[i] = 0
@@ -284,7 +287,7 @@ cdef class NDFDecoder(Decoder):
                 minorCycle += 1
 #                logging.debug('***STEP 2 [minor {0}]'.format(minorCycle))
                 #*space3 = numpy.ones(lenS)
-                for k in range(lenS):
+                for k in range(self.k+2):
                     space3[k] = 1
                 solveLT(R.T, space3, space1, S, lenS) #space1= \bar u
                 solveUT(R, space1, space2, S, lenS) #space2 = u
@@ -296,8 +299,19 @@ cdef class NDFDecoder(Decoder):
                 #*space1 = space2 / numpy.sum(space2) #space1=v
                 # a = numpy.sum(space2) # remember: space3 = ones!
                 a= dot(space2, space3, lenS)
+                if not (a < 10) and not (a > 10): # NaN test
+                    print('no no no')
+                    print(space1)
+                    print(space2)
+                    print(space3)
+                    print(S)
+                    print(lenS)
+                    print(a)
+                    print(R[S][:,S])
+                    return -1
                 for k in range(lenS):
                     space1[k] = space2[k]/a
+                    
                 #*
                 
                 #*if numpy.all(space1 > EPS):
@@ -325,8 +339,7 @@ cdef class NDFDecoder(Decoder):
                         theta = a
                     else:
                         theta = 1
-                    #*  
-
+                    #*
                     #*w[S] = theta*w[S] + (1-theta)*space1 # 3 (c)
                     #*w[numpy.flatnonzero(w<=EPS)] = 0 # 3 (d)
                     #*firstZeroIndexInS = numpy.flatnonzero(w[S]==0)[0]
@@ -342,6 +355,7 @@ cdef class NDFDecoder(Decoder):
                     #*
                     firstZeroIndex = S[firstZeroIndexInS]
                     IinS = firstZeroIndexInS
+                    
                     if IinS < lenS-1:
                         i = S[IinS]
                         j = S[IinS+1]
@@ -373,17 +387,15 @@ cdef class NDFDecoder(Decoder):
                                 R[S[IinS+2],S[k]] = space3[k]
                         IinS+=1
                     # shrink S
+                    
                     for i in range(firstZeroIndexInS, lenS-1):
                         S[i] = S[i+1]
                     Sfree[firstZeroIndex] = True
                     lenS -= 1
 
-        if normx < EPS:
-            return Y, P, S, w, R
-        else:
-            for k in range(self.k+1):
-                X[k] += Y[k]
-            return X, P, S, w, R
+        for k in range(self.k+1):
+            X[k] += Y[k]
+        return lenS
 
     cdef void solveScalarization(self, numpy.double_t[:] direction, numpy.double_t[:] result):
         cdef:
