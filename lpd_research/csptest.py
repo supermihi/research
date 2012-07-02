@@ -34,7 +34,11 @@ if __name__ == "__main__":
         tmp = os.times()
         print('ref decoding time: {}'.format(tmp[0] + tmp[2] - time_a))
         print('real: {0}'.format(ref_decoder.objectiveValue))
+        tmp = os.times()
+        time_a = tmp[0] + tmp[2]
         decoder.decode(llr)
+        tmp = os.times()
+        print('CSP total time: {0}'.format(tmp[0] + tmp[2] - time_a))
         print('solution: {0}'.format(decoder.objectiveValue))
     
         logging.debug('real solution: {0}'.format(ref_decoder.objectiveValue))
