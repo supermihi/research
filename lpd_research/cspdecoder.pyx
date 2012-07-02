@@ -56,31 +56,33 @@ def zeroInConvexHull(points):
 
 cdef void solveLT(numpy.double_t[:,:] a,
                   numpy.double_t[:] b,
-                  numpy.double_t[:] x):
-    """Return x where x solves ax = b if a is a lower triangular matrix."""
+                  numpy.double_t[:] x,
+                  numpy.int_t[:] S):
+    """Return x where x solves a[S,:S]x = b if a is a lower triangular matrix."""
     cdef:
         int i,j
         double tmp         
-    for i in xrange(a.shape[0]):
+    for i in xrange(S.size):
         tmp = b[i]
         for j in xrange(i):
-            tmp -= x[j]*a[i,j]
-        x[i] =  tmp / a[i,i]
+            tmp -= x[j]*a[S[i],S[j]]
+        x[i] =  tmp / a[S[i],S[i]]
         #x[i] = (b[i] - numpy.dot(x[:i], a[i,:i])) / a[i,i]
 
 cdef void solveUT(numpy.double_t[:,:] a,
                   numpy.double_t[:] b,
-                  numpy.double_t[:] x):
+                  numpy.double_t[:] x,
+                  numpy.int_t[:] S):
     """Return x where x solves ax = b if a is an upper triangular matrix."""
     cdef:
-        int size = a.shape[0]
+        int size = S.size
         int i,j
         double tmp
     for i in xrange(size-1, -1, -1):
         tmp = b[i]
         for j in xrange(i+1,size):
-            tmp -= x[j]*a[i,j]
-        x[i] = tmp / a[i,i]
+            tmp -= x[j]*a[S[i],S[j]]
+        x[i] = tmp / a[S[i],S[i]]
         #x[i] = (b[i] - numpy.dot(x[i+1:], a[i,i+1:])) / a[i,i]
 
 labelStr = { INPUT: "input", PARITY: "parity"}
@@ -182,7 +184,7 @@ cdef class NDFDecoder(Decoder):
         R: R from Method D, if P and w are given"""
         cdef:
             numpy.ndarray[ndim=1, dtype=numpy.double_t] v, X, e1, P_J, rhs, space1, space2, space3
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] Q, RR
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] Q
             double normx, oldnormx, time_a, a, b, c, theta
             int majorCycle, minorCycle, i, j, k,l,newIndex = 1
             int lenS = 1, IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
@@ -241,7 +243,7 @@ cdef class NDFDecoder(Decoder):
                     break
 
             rhs = numpy.dot(Q.T, P_J) + 1
-            solveLT(R[S][:,S].T, rhs, space1)
+            solveLT(R.T, rhs, space1, S)
             
             # augment R
             R[S,newIndex] = space1
@@ -262,11 +264,11 @@ cdef class NDFDecoder(Decoder):
 #            assert numpy.linalg.norm(numpy.dot(R[S][:,S].T,R[S][:,S]) - numpy.dot(Q.T,Q) - numpy.ones((lenS, lenS))) < EPS
             for minorCycle in itertools.count():
 #                logging.debug('***STEP 2 [minor {0}]'.format(minorCycle))
-                RR = R[S][:,S]
+                #RR = R[S][:,S]
                 tmptime = os.times()
                 time_a = tmptime[0] + tmptime[2]
-                solveLT(RR.T, numpy.ones(lenS), space1) #space1= \bar u
-                solveUT(RR, space1, space2) #space2 = u
+                solveLT(R.T, numpy.ones(lenS), space1, S) #space1= \bar u
+                solveUT(R, space1, space2, S) #space2 = u
                 
                 # check
                 #result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(lenS), Q)), e1)
