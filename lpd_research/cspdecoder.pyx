@@ -105,7 +105,12 @@ cdef class NDFDecoder(Decoder):
         
     cpdef solve(self):
         cdef:
-            numpy.double_t[:] Y
+            numpy.double_t[:] direction
+            numpy.ndarray[ndim=1, dtype=numpy.double_t] w, v, Y, z
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] P, R
+            numpy.ndarray[ndim=1, dtype=numpy.int_t] S
+            double oldZ, z_d
+            int i
         self.code.setCost(self.llrVector)
         self.lstsq_time = self.sp_time = self.omg_time = 0
         tmp = os.times()
@@ -113,9 +118,7 @@ cdef class NDFDecoder(Decoder):
         # find point with minimum cost in z-direction
         direction = numpy.zeros(self.k+1)
         direction[-1] = 1
-        Y = self.solveScalarization(direction)
-        P = Y.copy()
-        w = numpy.ones((1,1), dtype = numpy.double)
+        Y = numpy.asarray(self.solveScalarization(direction))
         if numpy.linalg.norm(Y[:-1]) < 1e-8:
             logging.info("initial point is feasible -> yeah!")
             self.solution = Y
@@ -129,15 +132,12 @@ cdef class NDFDecoder(Decoder):
         P = w = R = S = None
         #oldZ = -1000
         oldZ = Y[-1]
-        e1_test = numpy.zeros((self.k+1,1),dtype=numpy.double)
-        e1_test[0,0] = 1
         i = 0
         while True:
             #X, P, w = self.NPA(Y, P, w)
             #ret = self.NPA(Y, P, S, w, R, True)
             print('npa z={0}'.format(oldZ))
-            ret = self.NPA(numpy.asarray(Y), None, None, None, None, True)
-            X, P, S, w, R = ret
+            X, P, S, w, R = self.NPA(Y, None, None, None, None)
             i += 1
             v = X - Y
             if numpy.linalg.norm(v) < EPS:
@@ -148,8 +148,8 @@ cdef class NDFDecoder(Decoder):
             logging.info("Y={0}".format(repr(Y)))
             logging.info("w={0}".format(w))
             logging.info("v[-1]={0}".format(v[-1]))
-            z_d = (numpy.dot(X.T, v) / v[-1]).ravel()
-            if abs(z_d - oldZ) < 1e-8:
+            z_d = numpy.dot(X.T, v) / v[-1]
+            if numpy.abs(z_d - oldZ) < 1e-8:
                 print('done')
                 break
             P[-1,:] += oldZ - z_d
@@ -173,7 +173,7 @@ cdef class NDFDecoder(Decoder):
             numpy.ndarray[ndim=2, dtype=numpy.double_t] P,
             numpy.ndarray[ndim=1, dtype=numpy.int_t] S,
             numpy.ndarray[ndim=1, dtype=numpy.double_t] w,
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] R, bint methodD):
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] R):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         Y: reference point
@@ -182,7 +182,7 @@ cdef class NDFDecoder(Decoder):
         R: R from Method D, if P and w are given"""
         cdef:
             numpy.ndarray[ndim=1, dtype=numpy.double_t] v, X, e1, P_J, rhs, space1, space2, space3
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] Q
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] Q, RR
             double normx, oldnormx, time_a, a, b, c, theta
             int majorCycle, minorCycle, i, j, k,l,newIndex = 1
             int lenS = 1, IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
@@ -201,9 +201,8 @@ cdef class NDFDecoder(Decoder):
             w = numpy.empty(self.k+2)
             v = numpy.empty(self.k+2)
             w[0] = 1
-            if methodD:
-                R = numpy.zeros((self.k+2,self.k+2))
-                R[0,0] = sqrt(1+numpy.sum(numpy.square(P[:,0])))
+            R = numpy.zeros((self.k+2,self.k+2))
+            R[0,0] = sqrt(1+numpy.sum(numpy.square(P[:,0])))
         else:
             for k in S:
                 Sfree[k] = False
@@ -240,16 +239,14 @@ cdef class NDFDecoder(Decoder):
                 if Sfree[k] == 1:
                     newIndex = k
                     break
-            if methodD:
-                rhs = numpy.dot(Q.T, P_J) + 1
-                solveLT(R[S][:,S].T, rhs, space1)
-                # augment R
-                R[S,newIndex] = space1
-#                logging.info("P_J^TP_J={0}".format(numpy.dot(P_J, P_J)))
-#                logging.info("r^Tr={0}".format(numpy.dot(r, r)))
-                R[newIndex,newIndex] = sqrt(1 + numpy.dot(P_J, P_J) - numpy.dot(space1, space1))
+
+            rhs = numpy.dot(Q.T, P_J) + 1
+            solveLT(R[S][:,S].T, rhs, space1)
+            
+            # augment R
+            R[S,newIndex] = space1
+            R[newIndex,newIndex] = sqrt(1 + numpy.dot(P_J, P_J) - numpy.dot(space1, space1))
                 
-                #logging.info("{0}x{1} R={2}".format(R.shape[0], R.shape[1], repr(R)))
             # augment S
             P[:,newIndex] = P_J
             S = numpy.append(S, newIndex)
@@ -260,32 +257,37 @@ cdef class NDFDecoder(Decoder):
             space2 = numpy.empty(lenS, dtype=numpy.double)
             space3 = numpy.empty(lenS, dtype=numpy.double)
             Q = P[:,S]
+            
             # check if R augmentation is correct
 #            assert numpy.linalg.norm(numpy.dot(R[S][:,S].T,R[S][:,S]) - numpy.dot(Q.T,Q) - numpy.ones((lenS, lenS))) < EPS
-#            logging.info("S={0}".format(S))
-#            logging.info("w={0}".format(w))
-#            logging.info("R={0}".format(R[S][:,S]))
             for minorCycle in itertools.count():
 #                logging.debug('***STEP 2 [minor {0}]'.format(minorCycle))
+                RR = R[S][:,S]
                 tmptime = os.times()
                 time_a = tmptime[0] + tmptime[2]
-                if methodD:
-                    solveLT(R[S][:,S].T, numpy.ones(lenS), space1) #space1= \bar u
-                    solveUT(R[S][:,S], space1, space2) #space2 = u
-                else:
-                    result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(lenS), Q)), e1)
-                    u_correct = result[0]
-                #end else
-                space1 = space2 / numpy.sum(space2) #space1=v
+                solveLT(RR.T, numpy.ones(lenS), space1) #space1= \bar u
+                solveUT(RR, space1, space2) #space2 = u
+                
+                # check
+                #result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(lenS), Q)), e1)
+                #u_correct = result[0]
+                
+                #*space1 = space2 / numpy.sum(space2) #space1=v
+                a=0
+                for k in range(lenS):
+                    a += space2[k]
+                for k in range(lenS):
+                    space1[k] = space2[k]/a
+                #*
+                
                 tmptime = os.times()
                 self.lstsq_time += tmptime[0] + tmptime[2] - time_a
-#                logging.debug("ubar={0}".format(ubar))
-#                logging.debug("u methodD={0}".format(u))
-#                logging.debug("u correct={0}".format(u_correct))           
                 if numpy.all(space1 > EPS):
                     w[S] = space1
                     break
                 else:
+                    tmptime = os.times()
+                    time_a = tmptime[0] + tmptime[2]
                     self.minorCycles += 1
                     POS = numpy.flatnonzero(space1 <= EPS) # 3 (a) corrected                    
                     #theta = min(1, numpy.min(w[POS]/(w[POS] - v[POS]))) # 3 (b)
@@ -301,49 +303,47 @@ cdef class NDFDecoder(Decoder):
 #                    logging.debug("firstZeroInS={0}".format(firstZeroIndexInS))
 #                    logging.debug("firstZeroIndex={0}".format(firstZeroIndex))
                     
-                    if methodD:
-                        tmptime = os.times()
-                        time_a = tmptime[0] + tmptime[2]
-                        IinS = firstZeroIndexInS
-                        #*R[:,firstZeroIndex] = 0
+                    
+                    IinS = firstZeroIndexInS
+                    #*R[:,firstZeroIndex] = 0
+                    for k in range(lenS):
+                        R[S[k],firstZeroIndex] = 0
+                    if IinS < lenS-1:
+                        i = S[IinS]
+                        j = S[IinS+1]
+                        #*tmp = R[S[IinS+1]].copy()
+                        #*R[S[IinS+1]] = R[S[IinS]]
                         for k in range(lenS):
-                            R[S[k],firstZeroIndex] = 0
-                        if IinS < lenS-1:
-                            i = S[IinS]
-                            j = S[IinS+1]
-                            #*tmp = R[S[IinS+1]].copy()
-                            #*R[S[IinS+1]] = R[S[IinS]]
-                            for k in range(lenS):
-                                space1[k] = R[j,S[k]]
-                                R[j,S[k]] = R[i,S[k]] 
-                            
-                        while IinS < lenS-1:
-                            I = S[IinS]
-                            Ip1 = S[IinS+1]
-                            a = R[Ip1,Ip1]
-                            b = space1[IinS+1]
-                            c = sqrt(a*a+b*b)
-                            #*first = (a*R[Ip1,S] + b*space1)/c
-                            #*second = (-b*R[Ip1,S] + a*space1)/c
-                            for k in range(lenS):
-                                space2[k] = (a*R[Ip1,S[k]] + b*space1[k])/c # first
-                                space3[k] = (-b*R[Ip1,S[k]] + a*space1[k])/c # second
-                            #*R[Ip1,S] = first
-                            for k in range(lenS):
-                                R[Ip1,S[k]] = space2[k]
-                            if IinS < lenS-2:
-                                #*space1 = R[S[IinS+2],S].copy()
-                                #*R[S[IinS+2],S] = second
-                                for k in range(lenS):
-                                    space1[k] = R[S[IinS+2],S[k]]
-                                    R[S[IinS+2],S[k]] = space3[k]
-                            IinS+=1
-                        tmptime = os.times()
-                        self.omg_time += tmptime[0] + tmptime[2] - time_a
-                        # remove last row
-                        #*R[firstZeroIndex,:] = 0
+                            space1[k] = R[j,S[k]]
+                            R[j,S[k]] = R[i,S[k]] 
+                        
+                    while IinS < lenS-1:
+                        I = S[IinS]
+                        Ip1 = S[IinS+1]
+                        a = R[Ip1,Ip1]
+                        b = space1[IinS+1]
+                        c = sqrt(a*a+b*b)
+                        #*first = (a*R[Ip1,S] + b*space1)/c
+                        #*second = (-b*R[Ip1,S] + a*space1)/c
                         for k in range(lenS):
-                            R[firstZeroIndex,S[k]] = 0
+                            space2[k] = (a*R[Ip1,S[k]] + b*space1[k])/c # first
+                            space3[k] = (-b*R[Ip1,S[k]] + a*space1[k])/c # second
+                        #*R[Ip1,S] = first
+                        for k in range(lenS):
+                            R[Ip1,S[k]] = space2[k]
+                        if IinS < lenS-2:
+                            #*space1 = R[S[IinS+2],S].copy()
+                            #*R[S[IinS+2],S] = second
+                            for k in range(lenS):
+                                space1[k] = R[S[IinS+2],S[k]]
+                                R[S[IinS+2],S[k]] = space3[k]
+                        IinS+=1
+                    tmptime = os.times()
+                    self.omg_time += tmptime[0] + tmptime[2] - time_a
+                    # remove last row
+                    #*R[firstZeroIndex,:] = 0
+                    for k in range(lenS):
+                        R[firstZeroIndex,S[k]] = 0
                     # shrink S
                     S = numpy.delete(S, firstZeroIndexInS)
                     Sfree[firstZeroIndex] = True
@@ -352,19 +352,11 @@ cdef class NDFDecoder(Decoder):
                     space1 = numpy.empty(lenS, dtype=numpy.double)
                     space2 = numpy.empty(lenS, dtype=numpy.double)
                     space3 = numpy.empty(lenS, dtype=numpy.double)
-#                    logging.debug("newS={0}".format(S))
-#                    logging.debug("newR={0}".format(R))
-#                    logging.debug("newR[S]={0}".format(R[S][:,S]))
-#                    assert numpy.linalg.norm(numpy.dot(R[S][:,S].T,R[S][:,S]) - numpy.dot(Q.T,Q) - numpy.ones((lenS, lenS))) < EPS
-            #raw_input()    
-        
+
         if normx < EPS:
-            solution = Y
+            return Y, P, S, w, R
         else:
-            solution = X + Y
-        if methodD:
-            return solution, P, S, w, R
-        return solution, P, S, w
+            return X + Y, P, S, w, R
 
     cdef numpy.double_t[:] solveScalarization(self, numpy.double_t[:] direction):
         cdef:

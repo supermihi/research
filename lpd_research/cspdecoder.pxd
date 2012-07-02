@@ -10,6 +10,5 @@ cdef class NDFDecoder(Decoder):
             numpy.ndarray[ndim=2, dtype=numpy.double_t] P,
             numpy.ndarray[ndim=1, dtype=numpy.int_t] S,
             numpy.ndarray[ndim=1, dtype=numpy.double_t] w,
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] R,
-            bint methodD)
+            numpy.ndarray[ndim=2, dtype=numpy.double_t] R)
     cdef numpy.double_t[:] solveScalarization(self, numpy.double_t[:] direction)
