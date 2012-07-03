@@ -150,7 +150,6 @@ cdef class NDFDecoder(Decoder):
         #oldZ = -1000
         oldZ = Y[-1]
         i = 0
-        v= numpy.empty(self.k+1)
         while True:
             # initialize data arrays for NFA
             #*P[:,0] = -Y
