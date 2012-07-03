@@ -167,11 +167,11 @@ cdef class NDFDecoder(Decoder):
             i += 1
             for k in range(self.k+1):
                 v[k] = X[k] - Y[k]
-            if norm(v, self.k+1) < EPS:
+            if norm(v, self.k+1) < 1e-8:
                 #print('done(v)')
                 break
             z_d = dot(X, v, self.k+1) / v[-1]
-            if numpy.abs(z_d-oldZ) < EPS:
+            if numpy.abs(z_d-oldZ) < 1e-8:
                 #print('done')
                 break
             Y[-1] = z_d 
@@ -221,25 +221,14 @@ cdef class NDFDecoder(Decoder):
                     X[i] += P[i,S[j]]*w[S[j]]
             #*
             normx = norm(X, self.k+1)
+            if normx < 1e-8:
+                break
             if normx > oldnormx+EPS:
                 print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
                 break
-            if abs(normx - oldnormx) <EPS and normx < 1e-6:
-                #print("no norm change in cycle {0}".format(majorCycle))
-                break
             oldnormx = normx
-
             for k in range(self.k+1):
                 P_J[k] = 0
-            if not (X[-1] <10) and not (X[-1]) > 10:
-                print('what the...')
-                print(X)
-                print(w[S[:lenS]])
-                print(lenS)
-                print(S)
-                print(majorCycle)
-                print(minorCycle)
-                print(R[S][:,S])
             self.solveScalarization(X, P_J)
             P_J[self.k] -= Y[self.k]
             b = dot(P_J, P_J, self.k+1)
@@ -252,9 +241,6 @@ cdef class NDFDecoder(Decoder):
                 if Sfree[k] == 1:
                     newIndex = k
                     break
-            if newIndex == -1:
-                print('no free indexes .. what?')
-                return -1
             #*rhs= P[:,S].T*P_J
             for i in range(lenS):
                 space2[i] = 0
@@ -268,6 +254,7 @@ cdef class NDFDecoder(Decoder):
             #*R[S,newIndex] = space1
             for k in range(lenS):
                 R[S[k],newIndex] = space1[k]
+                R[newIndex,S[k]] = 0
             c = dot(space1, space1, lenS)
             R[newIndex,newIndex] = sqrt(1 + b - c)
                 
@@ -290,8 +277,15 @@ cdef class NDFDecoder(Decoder):
                 for k in range(self.k+2):
                     space3[k] = 1
                 solveLT(R.T, space3, space1, S, lenS) #space1= \bar u
+#                ONE = numpy.dot(R[S[:lenS]][:,S[:lenS]].T, space1[:lenS])
+#                TWO = space3[:lenS]
+#                if not numpy.allclose(ONE, TWO):
+#                    print('spast1')
                 solveUT(R, space1, space2, S, lenS) #space2 = u
-                
+#                ONE = numpy.dot(R[S[:lenS]][:,S[:lenS]], space2[:lenS])
+#                TWO = space1[:lenS]
+#                if not numpy.allclose(ONE, TWO):
+#                    print('spast2')
                 # check
                 #result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(lenS), Q)), e1)
                 #u_correct = result[0]
@@ -299,16 +293,16 @@ cdef class NDFDecoder(Decoder):
                 #*space1 = space2 / numpy.sum(space2) #space1=v
                 # a = numpy.sum(space2) # remember: space3 = ones!
                 a= dot(space2, space3, lenS)
-                if not (a < 10) and not (a > 10): # NaN test
-                    print('no no no')
-                    print(space1)
-                    print(space2)
-                    print(space3)
-                    print(S)
-                    print(lenS)
-                    print(a)
-                    print(R[S][:,S])
-                    return -1
+#                if not (a < 10) and not (a > 10): # NaN test
+#                    print('no no no')
+#                    print(space1)
+#                    print(space2)
+#                    print(space3)
+#                    print(S)
+#                    print(lenS)
+#                    print(a)
+#                    print(R[S][:,S])
+#                    return -1
                 for k in range(lenS):
                     space1[k] = space2[k]/a
                     
@@ -387,7 +381,6 @@ cdef class NDFDecoder(Decoder):
                                 R[S[IinS+2],S[k]] = space3[k]
                         IinS+=1
                     # shrink S
-                    
                     for i in range(firstZeroIndexInS, lenS-1):
                         S[i] = S[i+1]
                     Sfree[firstZeroIndex] = True
