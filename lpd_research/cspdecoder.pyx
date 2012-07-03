@@ -119,16 +119,17 @@ cdef class NDFDecoder(Decoder):
     cpdef solve(self):
         cdef:
             numpy.double_t[:] direction = numpy.zeros(self.k+1)
+            numpy.double_t[:,:] RHS = numpy.empty((self.k+2, self.k+2))
             numpy.ndarray[ndim=1, dtype=numpy.double_t] \
                 w = numpy.empty(self.k+2),\
-                v = numpy.empty(self.k+2),\
+                v = numpy.empty(self.k+1),\
                 Y = numpy.zeros(self.k+1),\
                 X = numpy.empty(self.k+1)
             numpy.ndarray[ndim=2, dtype=numpy.double_t] P = numpy.empty((self.k+1, self.k+2)), R = numpy.empty((self.k+2,self.k+2))
             numpy.ndarray[ndim=1, dtype=numpy.int_t] S = numpy.zeros(self.k+2, dtype=numpy.int)
             numpy.ndarray[ndim=1,dtype=numpy.uint8_t,cast=True] Sfree = numpy.ones(self.k+2,dtype=numpy.bool)
             double oldZ, z_d, a
-            int i, k, lenS = 1
+            int i, j, k, mainIterations = 0, lenS = 1
         
         self.code.setCost(self.llrVector)
         self.lstsq_time = self.sp_time = self.omg_time = 0
@@ -146,36 +147,70 @@ cdef class NDFDecoder(Decoder):
         for k in range(self.k):
             Y[k] = 0
         self.majorCycles = self.minorCycles = 0
-
-        #oldZ = -1000
-        oldZ = Y[-1]
-        i = 0
+        
+        for k in range(self.k+1):
+                P[k,0] = -Y[k]
+        Sfree[0] = False
+        for k in range(1, self.k+2):
+            Sfree[k] = True
+        w[0] = 1
+        R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
+        lenS = 1
+        S[0] = 0
+        oldZ = z_d = 0
         while True:
             # initialize data arrays for NFA
             #*P[:,0] = -Y
-            for k in range(self.k+1):
-                P[k,0] = -Y[k]
-            Sfree[0] = False
-            for k in range(1, self.k+2):
-                Sfree[k] = True
-            w[0] = 1
-            R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
-            lenS = 1
-            S[0] = 0
+            
+            # adjust points in Q
+            for k in range(lenS):
+                P[self.k, S[k]] += oldZ - z_d
+            # adjust R
+            tmp = os.times()
+            time_omg = tmp[0] + tmp[2]
+            #newRHS = numpy.ones((lenS, lenS)) + numpy.dot(P[:,S[:lenS]].T, P[:,S[:lenS]])
+            #newR = numpy.linalg.cholesky(newRHS)
+#            for i in range(lenS):
+#                for j in range(lenS):
+#                    R[S[i],S[j]] = newR[j,i]
+            # compute RHS = ee^T + Q^TQ
+            for i in range(lenS):
+                for j in range(i,lenS):
+                    a = 0
+                    for k in range(self.k+1):
+                        a += P[k,S[i]]*P[k,S[j]]
+                    RHS[i,j] = 1 + a
+            # compute cholesky decomposition of Q^tQ
+            for i in range(lenS):
+                for j in range(i):
+                    a = RHS[j,i]
+                    for k in range(j):
+                        a -= R[S[k],S[i]]*R[S[k],S[j]]
+                    R[S[j],S[i]] = a / R[S[j],S[j]]
+                a = RHS[i,i]
+                for k in range(i):
+                    a -= R[S[k],S[i]]*R[S[k],S[i]]
+                if a > 0:
+                    R[S[i],S[i]] = sqrt(a)
+                else:
+                    print('not pdf')
+            tmp = os.times()
+            self.omg_time += tmp[0] + tmp[2] - time_omg
+            oldZ = Y[-1]
             lenS = self.NPA(Y, P, S, Sfree, w, R, lenS, X)
-            i += 1
+            mainIterations += 1
             for k in range(self.k+1):
                 v[k] = X[k] - Y[k]
             if norm(v, self.k+1) < 1e-8:
                 #print('done(v)')
                 break
             z_d = dot(X, v, self.k+1) / v[-1]
-            if numpy.abs(z_d-oldZ) < 1e-8:
+            if abs(z_d-oldZ) < 1e-8:
                 #print('done')
                 break
             Y[-1] = z_d 
         self.objectiveValue = Y[-1]
-        #print('main iterations: {0}'.format(i))
+        #print('main iterations: {0}'.format(mainIterations))
         tmp = os.times()
         #print('total time: {}; least square solution time: {}; shortest path time: {}; omg time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time, self.omg_time))
         #print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
@@ -192,9 +227,30 @@ cdef class NDFDecoder(Decoder):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         Y: reference point
-        P: matrix of corral points (column-wise), if given
-        w: weight vector, if P is given
-        R: R from Method D, if P and w are given"""
+        P: matrix of corral points (column-wise)
+        S: vector of used indexes for P, w and R
+        Sfree: bool array storing which indexes are free in S
+        w: weight vector
+        R: R for method D
+        lenS: number of indexes
+        X: result array
+        """
+        # ************ explanation of the optimizations *********
+        # This algorithm is highly optimized using Cython, it basically
+        # runs in C completely. To cope with the varying number of points
+        # in the corral, we use fixed-size arrays everywhere. The integer
+        # lenS holds the actual size of the corral, and the first lenS entries
+        # of S are the indexes used; i.e., S[:lenS] corresponds to the S in
+        # the paper, and Q would be P[:, S[:lenS] ].
+        #
+        # Similarly, the 2-d array R is used in such a way that what is
+        # R[i,j] in the paper is R[S[i], S[j]] in our code.
+        #
+        # This tweaks admittedly do not increase readability of the code, but
+        # completely eliminate any memory reallocation, such that the speed
+        # of this implementation should be hard to beat. If there are any
+        # unobvious optimizations, lines starting with " #* " contain the original
+        # code, and the optimized version is written below that comment line.
         # type definitions
         cdef:
             numpy.ndarray[ndim=1, dtype=numpy.double_t] P_J, space1, space2, space3
@@ -221,6 +277,10 @@ cdef class NDFDecoder(Decoder):
             #*
             normx = norm(X, self.k+1)
             if normx < 1e-8:
+                break
+            if abs(normx-oldnormx) < 1e-10 and normx < 1e-7:
+                print('small change {0}'.format(normx))
+                raw_input()
                 break
             if normx > oldnormx+EPS:
                 print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
@@ -397,6 +457,9 @@ cdef class NDFDecoder(Decoder):
         for enc in self.code.encoders:
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
+        
+    def __str__(self):
+        return "NearestPointLPSolver"
 
 class NDFInteriorDecoder(Decoder):
     def __init__(self, code):
