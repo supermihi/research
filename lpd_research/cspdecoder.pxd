@@ -3,7 +3,7 @@ cimport numpy
 cdef class NDFDecoder(Decoder):
     cdef public numpy.int_t k
     cdef public object code, constraints
-    cdef public double lstsq_time, sp_time, omg_time
+    cdef public double lstsq_time, sp_time, cho_time
     cdef public int majorCycles, minorCycles
     cdef int NPA(self,
             numpy.ndarray[ndim=1, dtype=numpy.double_t] Y,

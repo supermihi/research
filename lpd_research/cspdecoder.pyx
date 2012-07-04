@@ -14,62 +14,35 @@ from lpdecoding.codes.ctrellis cimport Trellis
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
 from lpdecoding.codes.trellis import INPUT, PARITY
 from libc.math cimport sqrt, abs 
-import itertools, logging
-import numpy
-cimport numpy
-cimport cython
-import os
-cdef double EPS = 1e-10
+import logging, os
+import numpy as np
+cimport numpy as np 
+
 logging.basicConfig(level=logging.ERROR)
-        
-        
-def zeroInConvexHull(points):
-    import cplex as cpx
-    cplex = cpx.Cplex()
-    cplex.set_results_stream(None)
 
-    lamb = ["lamb{0}".format(i) for i in range(len(points)) ]
-    dim = len(points[0])
-    x = ["x{0}".format(j) for j in range(dim)]
-    cplex.variables.add(types=[cplex.variables.type.continuous]*len(points),
-                        lb = [0]*len(points),
-                        names = lamb)
-    cplex.variables.add(types=[cplex.variables.type.continuous]*len(x),
-                        lb = [-cpx.infinity]*len(x),
-                        ub = [cpx.infinity]*len(x),
-                        names = x)
-    cplex.set_problem_type(cplex.problem_type.QP)
+DEF TimeMeasure = False # compile-time variable; if True, time of various steps is measured and output
 
-    cplex.linear_constraints.add(names = ["conv"],
-                                 rhs = [1],
-                                 senses = "E",
-                                 lin_expr = [ cpx.SparsePair(ind = lamb, val = [1]*len(lamb))])
-    cplex.linear_constraints.add(names = ["lx{0}".format(j) for j in range(len(x))],
-                                 rhs = [0]*len(x),
-                                 senses = "E"*len(x),
-                                 lin_expr = [ cpx.SparsePair(ind = lamb + [x[j]], val = [points[i][j] for i in range(len(points))] + [-1]) for j in range(len(x))])
-    cplex.objective.set_quadratic_coefficients( [ (xx,xx,2) for xx in x])
-    cplex.objective.set_sense(cplex.objective.sense.minimize)
-    cplex.solve()
-    distance = sqrt(cplex.solution.get_objective_value())
-    return distance < 1e-6, cplex.solution.get_values(x)
+cdef double EPS = 1e-10
 
-cdef inline double norm(numpy.double_t[:] a, int size):
+cdef inline double norm(np.double_t[:] a, int size):
+    """computes the L2-norm of a[:size]"""
     return sqrt(dot(a,a,size))
 
-cdef inline double dot(numpy.double_t[:] a, numpy.double_t[:] b, int size):
-    cdef double tmp = 0
-    cdef int i
+cdef inline double dot(np.double_t[:] a, np.double_t[:] b, int size):
+    """computes np.dot(a[:size], b[:size]) efficiently"""
+    cdef:
+        double tmp = 0
+        int i
     for i in range(size):
         tmp += a[i]*b[i]
     return tmp
  
-cdef void solveLT(numpy.double_t[:,:] a,
-                  numpy.double_t[:] b,
-                  numpy.double_t[:] x,
-                  numpy.int_t[:] S,
+cdef void solveLT(np.double_t[:,:] a,
+                  np.double_t[:] b,
+                  np.double_t[:] x,
+                  np.int_t[:] S,
                   int lenS):
-    """Return x where x solves a[S,:S]x = b if a is a lower triangular matrix."""
+    """Ensure that x[:lenS] solves numpy.dot(a[S[:lenS][:,S[:lenS], x[:lenS]) = b[:lenS] if a is a lower triangular matrix."""
     cdef:
         int i,j
         double tmp         
@@ -78,14 +51,14 @@ cdef void solveLT(numpy.double_t[:,:] a,
         for j in xrange(i):
             tmp -= x[j]*a[S[i],S[j]]
         x[i] =  tmp / a[S[i],S[i]]
-        #x[i] = (b[i] - numpy.dot(x[:i], a[i,:i])) / a[i,i]
+        #x[i] = (b[i] - np.dot(x[:i], a[i,:i])) / a[i,i]
 
-cdef void solveUT(numpy.double_t[:,:] a,
-                  numpy.double_t[:] b,
-                  numpy.double_t[:] x,
-                  numpy.int_t[:] S,
+cdef void solveUT(np.double_t[:,:] a,
+                  np.double_t[:] b,
+                  np.double_t[:] x,
+                  np.int_t[:] S,
                   int lenS):
-    """Return x where x solves ax = b if a is an upper triangular matrix."""
+    """Ensure that x[:lenS] solves numpy.dot(a[S[:lenS][:,S[:lenS], x[:lenS]) = b[:lenS] if a is an upper triangular matrix."""
     cdef:
         int i,j
         double tmp
@@ -94,7 +67,6 @@ cdef void solveUT(numpy.double_t[:,:] a,
         for j in xrange(i+1,lenS):
             tmp -= x[j]*a[S[i],S[j]]
         x[i] = tmp / a[S[i],S[i]]
-        #x[i] = (b[i] - numpy.dot(x[i+1:], a[i,i+1:])) / a[i,i]
 
 labelStr = { INPUT: "input", PARITY: "parity"}
 
@@ -114,32 +86,32 @@ cdef class NDFDecoder(Decoder):
             setattr(t2[s2], "g_{0}_index".format(labelStr[l2]), i)
             setattr(t2[s2], "g_{0}".format(labelStr[l2]), -1)   
             #t2[s2].g_coeffs[l2].append( (i, -1) )
-
         
     cpdef solve(self):
         cdef:
-            numpy.double_t[:] direction = numpy.zeros(self.k+1)
-            numpy.double_t[:,:] RHS = numpy.empty((self.k+2, self.k+2))
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] \
-                w = numpy.empty(self.k+2),\
-                v = numpy.empty(self.k+1),\
-                Y = numpy.zeros(self.k+1),\
-                X = numpy.empty(self.k+1)
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] P = numpy.empty((self.k+1, self.k+2)), R = numpy.empty((self.k+2,self.k+2))
-            numpy.ndarray[ndim=1, dtype=numpy.int_t] S = numpy.zeros(self.k+2, dtype=numpy.int)
-            numpy.ndarray[ndim=1,dtype=numpy.uint8_t,cast=True] Sfree = numpy.ones(self.k+2,dtype=numpy.bool)
-            double oldZ, z_d, a
+            np.double_t[:] direction = np.zeros(self.k+1)
+            np.double_t[:,:] RHS = np.empty((self.k+2, self.k+2))
+            np.ndarray[ndim=1, dtype=np.double_t] \
+                w = np.empty(self.k+2),\
+                v = np.empty(self.k+1),\
+                Y = np.zeros(self.k+1),\
+                X = np.empty(self.k+1)
+            np.ndarray[ndim=2, dtype=np.double_t] P = np.empty((self.k+1, self.k+2)), R = np.empty((self.k+2,self.k+2))
+            np.ndarray[ndim=1, dtype=np.int_t] S = np.zeros(self.k+2, dtype=np.int)
+            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = np.ones(self.k+2,dtype=np.bool)
+            double oldZ = 0, z_d = 0, a
             int i, j, k, mainIterations = 0, lenS = 1
         
         self.code.setCost(self.llrVector)
-        self.lstsq_time = self.sp_time = self.omg_time = 0
-        tmp = os.times()
-        time_a = tmp[0] + tmp[2]
+        self.lstsq_time = self.sp_time = self.cho_time = 0
+        IF TimeMeasure:
+            tmp = os.times()
+            time_a = tmp[0] + tmp[2]
         # find point with minimum cost in z-direction
         direction[-1] = 1
         self.solveScalarization(direction, Y)
         if norm(Y, self.k) < 1e-8:
-            logging.info("initial point is feasible -> yeah!")
+            print("initial point is feasible -> yeah!")
             self.solution = Y
             self.objectiveValue = Y[-1]
             return
@@ -155,24 +127,18 @@ cdef class NDFDecoder(Decoder):
             Sfree[k] = True
         w[0] = 1
         R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
-        lenS = 1
         S[0] = 0
-        oldZ = z_d = 0
         while True:
             # initialize data arrays for NFA
-            #*P[:,0] = -Y
             
             # adjust points in Q
             for k in range(lenS):
                 P[self.k, S[k]] += oldZ - z_d
+            
             # adjust R
-            tmp = os.times()
-            time_omg = tmp[0] + tmp[2]
-            #newRHS = numpy.ones((lenS, lenS)) + numpy.dot(P[:,S[:lenS]].T, P[:,S[:lenS]])
-            #newR = numpy.linalg.cholesky(newRHS)
-#            for i in range(lenS):
-#                for j in range(lenS):
-#                    R[S[i],S[j]] = newR[j,i]
+            IF TimeMeasure:
+                tmp = os.times()
+                time_omg = tmp[0] + tmp[2]
             # compute RHS = ee^T + Q^TQ
             for i in range(lenS):
                 for j in range(i,lenS):
@@ -190,12 +156,10 @@ cdef class NDFDecoder(Decoder):
                 a = RHS[i,i]
                 for k in range(i):
                     a -= R[S[k],S[i]]*R[S[k],S[i]]
-                if a > 0:
-                    R[S[i],S[i]] = sqrt(a)
-                else:
-                    print('not pdf')
-            tmp = os.times()
-            self.omg_time += tmp[0] + tmp[2] - time_omg
+                R[S[i],S[i]] = sqrt(a)
+            IF TimeMeasure:
+                tmp = os.times()
+                self.cho_time += tmp[0] + tmp[2] - time_omg
             oldZ = Y[-1]
             lenS = self.NPA(Y, P, S, Sfree, w, R, lenS, X)
             mainIterations += 1
@@ -210,20 +174,21 @@ cdef class NDFDecoder(Decoder):
                 break
             Y[-1] = z_d 
         self.objectiveValue = Y[-1]
-        #print('main iterations: {0}'.format(mainIterations))
-        tmp = os.times()
-        #print('total time: {}; least square solution time: {}; shortest path time: {}; omg time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time, self.omg_time))
-        #print('major cycles: {0}    minor cycles: {1}'.format(self.majorCycles, self.minorCycles)) 
+        
+        IF TimeMeasure:
+            tmp = os.times()
+            print('total time: {}; least square solution time: {}; shortest path time: {}; omg time: {}'.format(tmp[0]+tmp[2]-time_a, self.lstsq_time, self.sp_time, self.cho_time))
+            print('main iterations: {0}   major cycles: {1}    minor cycles: {2}'.format(mainIterations, self.majorCycles, self.minorCycles)) 
     
     cdef int NPA(self,
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] Y,
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] P,
-            numpy.ndarray[ndim=1, dtype=numpy.int_t] S,
-            numpy.ndarray[ndim=1, dtype=numpy.uint8_t, cast = True] Sfree,
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] w,
-            numpy.ndarray[ndim=2, dtype=numpy.double_t] R,
+            np.ndarray[ndim=1, dtype=np.double_t] Y,
+            np.ndarray[ndim=2, dtype=np.double_t] P,
+            np.ndarray[ndim=1, dtype=np.int_t] S,
+            np.ndarray[ndim=1, dtype=np.uint8_t, cast = True] Sfree,
+            np.ndarray[ndim=1, dtype=np.double_t] w,
+            np.ndarray[ndim=2, dtype=np.double_t] R,
             int lenS,
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] X) except -1:
+            np.ndarray[ndim=1, dtype=np.double_t] X) except -1:
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         Y: reference point
@@ -253,23 +218,23 @@ cdef class NDFDecoder(Decoder):
         # code, and the optimized version is written below that comment line.
         # type definitions
         cdef:
-            numpy.ndarray[ndim=1, dtype=numpy.double_t] P_J, space1, space2, space3
+            np.ndarray[ndim=1, dtype=np.double_t] P_J, space1, space2, space3
             double normx, oldnormx, a, b, c, theta
             int majorCycle = 0, minorCycle = 0, \
                 i, j, k, newIndex = 1, \
                 IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
             bint cond = False
   
-        P_J = numpy.empty(self.k+1)
+        P_J = np.empty(self.k+1)
         oldnormx = 1e20
-        space1 = numpy.empty(self.k+2, dtype=numpy.double)
-        space2 = numpy.empty(self.k+2, dtype=numpy.double)
-        space3 = numpy.empty(self.k+2, dtype=numpy.double)
+        space1 = np.empty(self.k+2, dtype=np.double)
+        space2 = np.empty(self.k+2, dtype=np.double)
+        space3 = np.empty(self.k+2, dtype=np.double)
         while True:
             majorCycle += 1
             self.majorCycles += 1
             
-            #*numpy.dot(P[:,S], w[S], X)
+            #*np.dot(P[:,S], w[S], X)
             for i in range(self.k+1):
                 X[i] = 0
                 for j in range(lenS):
@@ -279,8 +244,8 @@ cdef class NDFDecoder(Decoder):
             if normx < 1e-8:
                 break
             if abs(normx-oldnormx) < 1e-10 and normx < 1e-7:
-                print('small change {0}'.format(normx))
-                raw_input()
+                #print('small change {0}'.format(normx))
+                #raw_input()
                 break
             if normx > oldnormx+EPS:
                 print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
@@ -294,7 +259,7 @@ cdef class NDFDecoder(Decoder):
             if dot(X, P_J, self.k+1) > normx*normx - 1e-12*sqrt(self.k):
                 #logging.debug('stop in 1 (c)')
                 break
-            #*newIndex = numpy.flatnonzero(Sfree)[0]
+            #*newIndex = np.flatnonzero(Sfree)[0]
             newIndex = -1
             for k in range(self.k+2):
                 if Sfree[k] == 1:
@@ -321,36 +286,34 @@ cdef class NDFDecoder(Decoder):
             for k in range(self.k+1):
                 P[k,newIndex] = P_J[k]
             # augment S
-            #S = numpy.append(S, newIndex)
+            #S = np.append(S, newIndex)
             S[lenS] = newIndex
             Sfree[newIndex] = False
             w[newIndex] = 0
             lenS += 1
             # check if R augmentation is correct
-            # assert numpy.linalg.norm(numpy.dot(R[S][:,S].T,R[S][:,S]) - numpy.dot(Q.T,Q) - numpy.ones((lenS, lenS))) < EPS
+            # assert np.linalg.norm(np.dot(R[S][:,S].T,R[S][:,S]) - np.dot(Q.T,Q) - np.ones((lenS, lenS))) < EPS
             minorCycle = 0
             while True:
                 minorCycle += 1
 #                logging.debug('***STEP 2 [minor {0}]'.format(minorCycle))
-                #*space3 = numpy.ones(lenS)
+                #*space3 = np.ones(lenS)
                 for k in range(self.k+2):
                     space3[k] = 1
+                IF TimeMeasure:
+                    tmp = os.times()
+                    time_a = tmp[0] + tmp[2]
                 solveLT(R.T, space3, space1, S, lenS) #space1= \bar u
-#                ONE = numpy.dot(R[S[:lenS]][:,S[:lenS]].T, space1[:lenS])
-#                TWO = space3[:lenS]
-#                if not numpy.allclose(ONE, TWO):
-#                    print('spast1')
                 solveUT(R, space1, space2, S, lenS) #space2 = u
-#                ONE = numpy.dot(R[S[:lenS]][:,S[:lenS]], space2[:lenS])
-#                TWO = space1[:lenS]
-#                if not numpy.allclose(ONE, TWO):
-#                    print('spast2')
+                IF TimeMeasure:
+                    tmp = os.times()
+                    self.lstsq_time = tmp[0] + tmp[2] - time_a 
                 # check
-                #result = numpy.linalg.lstsq(numpy.vstack((numpy.ones(lenS), Q)), e1)
+                #result = np.linalg.lstsq(np.vstack((np.ones(lenS), Q)), e1)
                 #u_correct = result[0]
                 
-                #*space1 = space2 / numpy.sum(space2) #space1=v
-                # a = numpy.sum(space2) # remember: space3 = ones!
+                #*space1 = space2 / np.sum(space2) #space1=v
+                # a = np.sum(space2) # remember: space3 = ones!
                 a= dot(space2, space3, lenS)
 #                if not (a < 10) and not (a > 10): # NaN test
 #                    print('no no no')
@@ -367,7 +330,7 @@ cdef class NDFDecoder(Decoder):
                     
                 #*
                 
-                #*if numpy.all(space1 > EPS):
+                #*if np.all(space1 > EPS):
                 cond = True
                 for k in range(lenS):
                     if space1[k] <= EPS:
@@ -380,8 +343,8 @@ cdef class NDFDecoder(Decoder):
                     break
                 else:
                     self.minorCycles += 1
-                    #*POS = numpy.flatnonzero(space1 <= EPS) # 3 (a) corrected                    
-                    #*theta = min(1, numpy.max(space1[POS]/(space1[POS] - w[S][POS]))) # 3 (b) corrected
+                    #*POS = np.flatnonzero(space1 <= EPS) # 3 (a) corrected                    
+                    #*theta = min(1, np.max(space1[POS]/(space1[POS] - w[S][POS]))) # 3 (b) corrected
                     a = -1
                     for k in range(lenS):
                         if space1[k] <= EPS:
@@ -394,8 +357,8 @@ cdef class NDFDecoder(Decoder):
                         theta = 1
                     #*
                     #*w[S] = theta*w[S] + (1-theta)*space1 # 3 (c)
-                    #*w[numpy.flatnonzero(w<=EPS)] = 0 # 3 (d)
-                    #*firstZeroIndexInS = numpy.flatnonzero(w[S]==0)[0]
+                    #*w[np.flatnonzero(w<=EPS)] = 0 # 3 (d)
+                    #*firstZeroIndexInS = np.flatnonzero(w[S]==0)[0]
                     # index of S that will leave
                     firstZeroIndexInS = -1
                     for k in range(lenS):
@@ -408,6 +371,7 @@ cdef class NDFDecoder(Decoder):
                     #*
                     firstZeroIndex = S[firstZeroIndexInS]
                     IinS = firstZeroIndexInS
+                    
                     
                     if IinS < lenS-1:
                         i = S[IinS]
@@ -449,14 +413,18 @@ cdef class NDFDecoder(Decoder):
             X[k] += Y[k]
         return lenS
 
-    cdef void solveScalarization(self, numpy.double_t[:] direction, numpy.double_t[:] result):
+    cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result):
         cdef:
-            double lamb, c_result, time_a
-        lamb = direction[-1]
-        c_result = 0
+            double lamb = direction[-1], c_result = 0, time_a
+        IF TimeMeasure:
+            tmp = os.times()
+            time_a = tmp[0] + tmp[2]
         for enc in self.code.encoders:
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
+        IF TimeMeasure:
+            tmp= os.times()
+            self.sp_time += tmp[0] + tmp[2] - time_a
         
     def __str__(self):
         return "NearestPointLPSolver"
