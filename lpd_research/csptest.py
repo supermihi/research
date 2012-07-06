@@ -16,7 +16,7 @@ if __name__ == "__main__":
     inter = interleaver.Interleaver(repr = [1,0,4,2,3] )
     encoder = trellis.TD_InnerEncoder() # 4 state encoder
     
-    inter = interleaver.lte_interleaver(40)
+    inter = interleaver.lte_interleaver(80)
     encoder = trellis.LTE_Encoder()
     code = turbolike.StandardTurboCode(encoder, inter)
     
@@ -40,5 +40,5 @@ if __name__ == "__main__":
         tmp = os.times()
         print('CSP total time: {0}'.format(tmp[0] + tmp[2] - time_a))
         print('solution: {0}'.format(decoder.objectiveValue))
-    
+        #print('X: {0}'.format(decoder.X))
         logging.debug('real solution: {0}'.format(ref_decoder.objectiveValue))
