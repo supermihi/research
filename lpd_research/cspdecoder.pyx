@@ -20,7 +20,7 @@ cimport numpy as np
 
 logging.basicConfig(level=logging.ERROR)
 
-DEF TimeMeasure = False # compile-time variable; if True, time of various steps is measured and output
+DEF TimeMeasure = True # compile-time variable; if True, time of various steps is measured and output
 
 cdef double EPS = 1e-10
 
@@ -72,11 +72,14 @@ labelStr = { INPUT: "input", PARITY: "parity"}
 
 cdef class NDFDecoder(Decoder):
     """Nondominated Facet Decoder."""
-    def __init__(self, code):
-        Decoder.__init__(self)
-        self.code = code
+    def __init__(self, code, name = None):
+        Decoder.__init__(self, code)
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
+        if name is None:
+            self.name = str(self)
+        else:
+            self.name = name
         
         for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
             setattr(t1[s1], "g_{0}_index".format(labelStr[l1]), i)
@@ -106,8 +109,8 @@ cdef class NDFDecoder(Decoder):
             int i, j, k, mainIterations = 0, lenS = 1
         
         self.code.setCost(self.llrVector)
-        self.lstsq_time = self.sp_time = self.cho_time = self.npa_time = self.r_time = 0
         IF TimeMeasure:
+            self.lstsq_time = self.sp_time = self.cho_time = self.npa_time = self.r_time = 0
             tmp = os.times()
             time_a = tmp[0] + tmp[2]
         # find point with minimum cost in z-direction
@@ -190,10 +193,16 @@ cdef class NDFDecoder(Decoder):
         
         IF TimeMeasure:
             tmp = os.times()
-            print('total time: {}; least square solution time: {}; shortest path time: {}; cho time: {}; r time: {}; npa time: {}'.format(
-                          tmp[0]+tmp[2]-time_a,
-                          self.lstsq_time, self.sp_time, self.cho_time, self.r_time, self.npa_time))
-            print('main iterations: {0}   major cycles: {1}   minor cycles: {2}'.format(mainIterations, self.majorCycles, self.minorCycles)) 
+            if len(self.stats) == 0:
+                self.stats["lstsq_time"] = self.stats["sp_time"] = self.stats["cho_time"] = self.stats["r_time"] = 0
+            self.stats["lstsq_time"] += self.lstsq_time
+            self.stats["sp_time"] += self.sp_time
+            self.stats["cho_time"] += self.cho_time
+            self.stats["r_time"] += self.r_time
+            #print('total time: {}; least square solution time: {}; shortest path time: {}; cho time: {}; r time: {}; npa time: {}'.format(
+            #              tmp[0]+tmp[2]-time_a,
+            #              self.lstsq_time, self.sp_time, self.cho_time, self.r_time, self.npa_time))
+            #print('main iterations: {0}   major cycles: {1}   minor cycles: {2}'.format(mainIterations, self.majorCycles, self.minorCycles)) 
     
     cdef int NPA(self,
             np.ndarray[ndim=1, dtype=np.double_t] Y,
@@ -459,8 +468,11 @@ cdef class NDFDecoder(Decoder):
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
                 
+    def params(self):
+        return {"name" : self.name}
+    
     def __str__(self):
-        return "NearestPointLPSolver"
+        return "NDFDecoder"
 
 class NDFInteriorDecoder(Decoder):
     def __init__(self, code):

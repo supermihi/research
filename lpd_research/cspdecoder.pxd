@@ -2,7 +2,7 @@ from lpdecoding.core cimport Decoder
 cimport numpy as np
 cdef class NDFDecoder(Decoder):
     cdef public np.int_t k
-    cdef public object code, constraints
+    cdef public object constraints
     cdef public double lstsq_time, sp_time, cho_time, npa_time, r_time
     cdef public int majorCycles, minorCycles
     cdef public np.ndarray X
