@@ -143,7 +143,7 @@ cdef class NDFDecoder(Decoder):
                 P[self.k, S[k]] += oldZ - z_d
             
             for k in range(self.k+1):    
-                self.X[k] = X[k]
+                self.X[k] = v[k]
             
             # adjust R
             IF TimeMeasure:
