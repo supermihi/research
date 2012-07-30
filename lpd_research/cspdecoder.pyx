@@ -91,7 +91,7 @@ cdef class NDFDecoder(Decoder):
             #t2[s2].g_coeffs[l2].append( (i, -1) )
         self.X = np.empty(self.k+1)
         
-    cpdef solve(self):
+    cpdef solve(self, np.int_t[:] hint=None):
         cdef:
             np.double_t[:] direction = np.zeros(self.k+1)
             np.double_t[:,:] RHS = np.empty((self.k+2, self.k+2))
@@ -117,10 +117,11 @@ cdef class NDFDecoder(Decoder):
         direction[-1] = 1
         self.solveScalarization(direction, Y)
         if norm(Y, self.k) < 1e-8:
-            print("i",end='')
+            # initial shortest path feasible
             self.solution = Y
-            self.objectiveValue = Y[-1]
+            self.objectiveValue = Y[self.k]
             self.X = np.zeros(self.k+1)
+            self.mlCertificate = self.foundCodeword = True
             return
         # set all but last component to 0 -> initial Y for nearest point algorithm
         for k in range(self.k):
@@ -181,15 +182,14 @@ cdef class NDFDecoder(Decoder):
             mainIterations += 1
             for k in range(self.k+1):
                 v[k] = X[k] - Y[k]
-            if norm(v, self.k+1) < 1e-8:
-                #print('done(v)')
+            if norm(v, self.k+1) < 1e-7:
                 break
             z_d = dot(X, v, self.k+1) / v[-1]
-            if abs(z_d-oldZ) < 1e-8:
-                #print('done')
+            if abs(z_d-oldZ) < 1e-7:
                 break
             Y[-1] = z_d 
         self.objectiveValue = Y[-1]
+        self.mlCertificate = self.foundCodeword = ( np.max(w[S[:lenS]]) > 1-1e-7 )
         
         IF TimeMeasure:
             tmp = os.times()
@@ -199,9 +199,6 @@ cdef class NDFDecoder(Decoder):
             self.stats["sp_time"] += self.sp_time
             self.stats["cho_time"] += self.cho_time
             self.stats["r_time"] += self.r_time
-            #print('total time: {}; least square solution time: {}; shortest path time: {}; cho time: {}; r time: {}; npa time: {}'.format(
-            #              tmp[0]+tmp[2]-time_a,
-            #              self.lstsq_time, self.sp_time, self.cho_time, self.r_time, self.npa_time))
             #print('main iterations: {0}   major cycles: {1}   minor cycles: {2}'.format(mainIterations, self.majorCycles, self.minorCycles)) 
     
     cdef int NPA(self,
@@ -269,10 +266,9 @@ cdef class NDFDecoder(Decoder):
                 break
             if abs(normx-oldnormx) < 1e-10 and normx < 1e-7:
                 #print('small change {0}'.format(normx))
-                #raw_input()
                 break
-            if normx > oldnormx+EPS:
-                print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
+            if normx > oldnormx:#+EPS:
+                #print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
                 break
             oldnormx = normx
             for k in range(self.k+1):
@@ -358,16 +354,6 @@ cdef class NDFDecoder(Decoder):
                 #*space1 = space2 / np.sum(space2) #space1=v
                 # a = np.sum(space2) # remember: space3 = ones!
                 a= dot(space2, space3, lenS)
-#                if not (a < 10) and not (a > 10): # NaN test
-#                    print('no no no')
-#                    print(space1)
-#                    print(space2)
-#                    print(space3)
-#                    print(S)
-#                    print(lenS)
-#                    print(a)
-#                    print(R[S][:,S])
-#                    return -1
                 for k in range(lenS):
                     space1[k] = space2[k]/a
                     
@@ -468,7 +454,7 @@ cdef class NDFDecoder(Decoder):
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
                 
-    def params(self):
+    cpdef params(self):
         return {"name" : self.name}
     
     def __str__(self):
