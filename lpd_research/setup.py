@@ -4,7 +4,7 @@ from distutils.extension import Extension
 from Cython.Distutils import build_ext
 import numpy
 default_includes = [numpy.get_include(), ".", "src"]
-ext_modules = [Extension("cspdecoder", ["cspdecoder.pyx"], include_dirs=default_includes)]
+ext_modules = [Extension("lpresearch.cspdecoder", ["lpresearch/cspdecoder.pyx"], include_dirs=default_includes)]
 
 setup(
   name = 'Constrained Shortest Path Decoder',
