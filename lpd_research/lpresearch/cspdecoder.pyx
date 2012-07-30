@@ -266,7 +266,7 @@ cdef class NDFDecoder(Decoder):
             if abs(normx-oldnormx) < 1e-10 and normx < 1e-7:
                 #print('small change {0}'.format(normx))
                 break
-            if normx > oldnormx:#+EPS:
+            if normx >= oldnormx:#+EPS:
                 #print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
                 break
             oldnormx = normx
