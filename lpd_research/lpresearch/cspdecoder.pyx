@@ -7,6 +7,7 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 from __future__ import division, print_function
+from collections import OrderedDict
 from lpdecoding.core import Decoder
 from lpdecoding.codes import turbolike, interleaver
 from lpdecoding.codes.ctrellis cimport Trellis 
@@ -71,10 +72,11 @@ labelStr = { INPUT: "input", PARITY: "parity"}
 
 cdef class NDFDecoder(Decoder):
     """Nondominated Facet Decoder."""
-    def __init__(self, code, name = None):
-        Decoder.__init__(self, code)
+    def __init__(self, code, name=None, maxMajorCycles=0):
+        Decoder.__init__(self, code,)
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
+        self.maxMajorCycles = maxMajorCycles
         if name is None:
             self.name = str(self)
         else:
@@ -135,7 +137,7 @@ cdef class NDFDecoder(Decoder):
         w[0] = 1
         R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
         S[0] = 0
-        while True:
+        while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
             # initialize data arrays for NFA
             
             # adjust points in Q
@@ -345,7 +347,7 @@ cdef class NDFDecoder(Decoder):
                 solveUT(R, space1, space2, S, lenS) #space2 = u
                 IF TimeMeasure:
                     tmp = os.times()
-                    self.lstsq_time += tmp[0] + tmp[2] - time_a 
+                    self.lstsq_time += tmp[0] + tmp[2] - time_a
                 # check
                 #result = np.linalg.lstsq(np.vstack((np.ones(lenS), Q)), e1)
                 #u_correct = result[0]
@@ -353,6 +355,12 @@ cdef class NDFDecoder(Decoder):
                 #*space1 = space2 / np.sum(space2) #space1=v
                 # a = np.sum(space2) # remember: space3 = ones!
                 a= dot(space2, space3, lenS)
+                if np.isnan(a):
+                    # a numerically bad case that happens extremely seldom
+                    if 'NaNs' not in self.stats:
+                        self.stats['NaNs'] = 0
+                    self.stats['NaNs'] += 1
+                    return lenS-1
                 for k in range(lenS):
                     space1[k] = space2[k]/a
                     
@@ -448,13 +456,13 @@ cdef class NDFDecoder(Decoder):
 
     cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result):
         cdef:
-            double lamb = direction[-1], c_result = 0
+            double lamb = direction[self.k], c_result = 0
         for enc in self.code.encoders:
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
                 
     cpdef params(self):
-        return {"name" : self.name}
+        return OrderedDict([ ("name", self.name), ("maxMajorCycles", self.maxMajorCycles) ])
     
     def __str__(self):
         return "NDFDecoder"
