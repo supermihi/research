@@ -7,7 +7,7 @@ default_includes = [numpy.get_include(), ".", "lpresearch"]
 ext_modules = [Extension("lpresearch.cspdecoder", ["lpresearch/cspdecoder.pyx"], include_dirs=default_includes)]
 
 setup(
-  name = 'Constrained Shortest Path Decoder',
+  name = 'LP Decoding Research Modules',
   cmdclass = {'build_ext': build_ext},
   packages = ["lpresearch"],
   ext_modules = ext_modules
