@@ -4,6 +4,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+import numpy as np
 
 class BranchAndBound:
     
@@ -37,6 +38,15 @@ class BranchAndBound:
         for var, value in fix:
             self.problem.fixVariable(var, value)
     
+    def acBound(self, node):
+        """Updates lower and upper bounds for node and all parent nodes if possible
+        """
+        pass
+    
+    def findVariable(self):
+        """Specifies the variable to be branched.
+        """
+        pass
 
 class Node:
     
@@ -47,4 +57,6 @@ class Node:
         self.branchVariable = None
         self.branchValue = None
         self.depth = depth
+        self.lowerb = -np.inf
+        self.upperb = np.inf
         
