@@ -10,5 +10,6 @@ setup(
   name = 'LP Decoding Research Modules',
   cmdclass = {'build_ext': build_ext},
   packages = ["lpresearch"],
+  test_suite = 'tests',
   ext_modules = ext_modules
 )

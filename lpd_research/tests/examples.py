@@ -7,10 +7,12 @@
 
 import numpy as np
 
-from . import problem
+from branchbound import problem, bnb
 from lpdecoding import *
 from lpdecoding.codes.trellis import TDInnerEncoder
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
+
+import unittest
 
 class ExampleProblem(problem.Problem):
     
@@ -48,9 +50,14 @@ class ExampleProblem(problem.Problem):
     def unfixVariable(self, var):
         self.decoder.cplex.variables.set_lower_bounds(self.decoder.x[var], 0)
         self.decoder.cplex.variables.set_upper_bounds(self.decoder.x[var], 1)
+
+class TestTurboDecoder(unittest.TestCase):
+    
+    def test_decoder(self):
+        testProblem = ExampleProblem()
+        algorithm = bnb.BranchAndBound(testProblem, depthFirst=True)
+        algorithm.run()
+        
         
 if __name__ == "__main__":
-    from .bnb import BranchAndBound
-    problem = ExampleProblem()
-    bnb = BranchAndBound(problem)
-    bnb.run()
+    unittest.main()
