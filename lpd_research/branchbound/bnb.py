@@ -79,12 +79,13 @@ class BranchAndBound:
             
         while toNode is not fromNode:
             self.problem.unfixVariable(fromNode.branchVariable)
-            fix.append(toNode.branchVariable)
+            fix.append( (toNode.branchVariable, toNode.BranchValue) )
             fromNode = fromNode.parent
             toNode = toNode.parent
             
         for var, value in fix:
-            self.problem.fixVariable(var, value)
+            if var != None:
+                self.problem.fixVariable(var, value)
     
     def updBound(self, node):
         """Updates lower and upper bounds for node and all parent nodes, if possible.
