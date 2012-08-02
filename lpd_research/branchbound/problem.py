@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012 helmling
+# Copyright 2012 Michael Helmling, Philipp Reichling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -26,4 +26,5 @@ class Problem:
         pass
     
     def setObjectiveFunction(self, c):
+        """Set the objective function to vector *c*, a numpy array."""
         pass
