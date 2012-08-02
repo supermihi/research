@@ -124,7 +124,7 @@ class BranchAndBound:
         """Specifies the variable to be branched.
         """
         for (i,x) in enumerate(vec):
-            if x > 0+ self.eps and x < 1- self.esp:
+            if x > 0+ self.eps and x < 1- self.eps:
                 return i
         return -1
         
