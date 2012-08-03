@@ -38,8 +38,12 @@ class ExampleProblem(problem.Problem):
         
     def solve(self):
         self.decoder.solve()
-        self.solution = self.decoder.solution
-        self.objectiveValue = self.decoder.objectiveValue
+        if not self.decoder.cplex.solution.is_primal_feasible():
+            self.solution = None
+            self.objectiveValue = np.inf
+        else:
+            self.solution = self.decoder.solution
+            self.objectiveValue = self.decoder.objectiveValue
 
     def fixVariable(self, var, value):
         if value == 0:

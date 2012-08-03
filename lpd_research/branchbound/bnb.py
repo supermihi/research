@@ -33,7 +33,7 @@ class BranchAndBound:
             if self.problem.solution != None:
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(self.problem.solution)
-                if branchVariable != -1:
+                if branchVariable is not None:
                     print("Variable x{}={} is not integral".format(branchVariable, self.problem.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = self.problem.objectiveValue
@@ -43,7 +43,7 @@ class BranchAndBound:
                 
                 
                 
-                if branchVariable == -1:
+                if branchVariable is None:
                     if self.optimalObjectiveValue > self.problem.objectiveValue:
                         self.optimalSolution = self.problem.solution
                         self.optimalObjectiveValue = self.problem.objectiveValue
@@ -55,7 +55,7 @@ class BranchAndBound:
                     pass
                 elif abs(activeNew.lowerb - activeNew.upperb) < self.eps:
                     pass
-                elif branchVariable == -1:
+                elif branchVariable is None:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
@@ -133,12 +133,12 @@ class BranchAndBound:
         
     
     def findVariable(self, vec):
-        """Specifies the variable to be branched.
+        """Specifies the variable to be branched, or None if *vec* is integral.
         """
         for (i,x) in enumerate(vec):
-            if x > 0+ self.eps and x < 1- self.eps:
+            if x > 0 + self.eps and x < 1 - self.eps:
                 return i
-        return -1
+        return None
         
     def getActiveNode(self):
         """Gets one active node depending on searchrule from the activeNode-list.
@@ -170,4 +170,4 @@ class Node:
         self.upperb = np.inf
         
     def __str__(self):
-        return "Node({}, {})".format(self.branchVariable, self.branchValue)
+        return "Node({}/{} with lb={},ub={})".format(self.branchVariable, self.branchValue, self.lowerb, self.upperb)
