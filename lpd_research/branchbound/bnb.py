@@ -33,7 +33,8 @@ class BranchAndBound:
             if self.problem.solution != None:
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(self.problem.solution)
-                print("Variable x{}={} is not integral".format(branchVariable, self.problem.solution[branchVariable]))
+                if branchVariable != -1:
+                    print("Variable x{}={} is not integral".format(branchVariable, self.problem.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = self.problem.objectiveValue
                 
@@ -95,8 +96,7 @@ class BranchAndBound:
             toNode = toNode.parent
         print("Fix list: {}".format(fix))
         for var, value in fix:
-            if var != None:
-                self.problem.fixVariable(var, value)
+            self.problem.fixVariable(var, value)
     
     def updBound(self, node):
         """Updates lower and upper bounds for node and all parent nodes, if possible.
