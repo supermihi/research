@@ -6,21 +6,30 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+
+"""This module contains the constrained shortest path LP decoder for turbo-like codes."""
+
 from __future__ import division, print_function
+
 from collections import OrderedDict
+import logging
+
+import numpy as np
+cimport numpy as np
+from libc.math cimport sqrt, abs
+
 from lpdecoding.core import Decoder
 from lpdecoding.codes import turbolike, interleaver
 from lpdecoding.codes.ctrellis cimport Trellis 
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
 from lpdecoding.codes.trellis import INPUT, PARITY
-from libc.math cimport sqrt, abs 
-import logging, os
-import numpy as np
-cimport numpy as np 
+from lpdecoding.utils cimport StopWatch
+ 
 
 logging.basicConfig(level=logging.ERROR)
 
-DEF TimeMeasure = True # compile-time variable; if True, time of various steps is measured and output
+DEF TIMING = True # compile-time variable; if True, time of various steps is measured and output
+DEF CREATE_SOLUTION = True
 
 cdef double EPS = 1e-10
 
@@ -70,146 +79,142 @@ cdef void solveUT(np.double_t[:,:] a,
 
 labelStr = { INPUT: "input", PARITY: "parity"}
 
-cdef class NDFDecoder(Decoder):
-    """Nondominated Facet Decoder."""
+cdef class CSPDecoder(Decoder):
+    """Constrained Shortest Path Decoder."""
+    
     def __init__(self, code, name=None, maxMajorCycles=0):
-        Decoder.__init__(self, code,)
+        """Initialize the decoder for a *code* and name it *name*.
+        
+        Optionally you may supply *maxMajorCycles* to limit the maximum number of major cycles
+        (nearest point calculations) performed. A value of 0 means no limit.
+        """
+           
+        Decoder.__init__(self, code)
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
         self.maxMajorCycles = maxMajorCycles
         if name is None:
-            self.name = str(self)
-        else:
-            self.name = name
-        
-        for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
-            setattr(t1[s1], "g_{0}_index".format(labelStr[l1]), i)
-            setattr(t1[s1], "g_{0}".format(labelStr[l1]), 1)
-            #t1[s1].g_coeffs[l1].append( (i, 1) )
+            name = "CSPDecoder" 
+        self.name = name
+        #=======================================================================
+        # Set coefficients and indices for constraints g_i on the involved
+        # trellis graphs.
+        #=======================================================================
+        for i, ((trellis1, segment1, label1), (trellis2, segment2, label2)) \
+                in enumerate(self.constraints):
+            setattr(trellis1[segment1], "g_{0}_index".format(labelStr[label1]), i)
+            setattr(trellis1[segment1], "g_{0}".format(labelStr[label1]), 1)
             
-            setattr(t2[s2], "g_{0}_index".format(labelStr[l2]), i)
-            setattr(t2[s2], "g_{0}".format(labelStr[l2]), -1)   
-            #t2[s2].g_coeffs[l2].append( (i, -1) )
+            setattr(trellis2[segment2], "g_{0}_index".format(labelStr[label2]), i)
+            setattr(trellis2[segment2], "g_{0}".format(labelStr[label2]), -1)   
+
+        #=======================================================================
+        # Initialize arrays and matrices
+        #=======================================================================
+        self.space1 = np.empty(self.k+2, dtype=np.double)
+        self.space2 = np.empty(self.k+2, dtype=np.double)
+        self.space3 = np.empty(self.k+2, dtype=np.double)
         self.X = np.empty(self.k+1)
+        self.P = np.empty((self.k+1, self.k+2))
+        self.R = np.empty((self.k+2,self.k+2))
+        self.S = np.empty(self.k+2, dtype=np.int)
+        self.Sfree = np.empty(self.k+2,dtype=np.bool)
+        self.w = np.empty(self.k+2)
+        self.direction = np.empty(self.k+1)
+        self.timer = StopWatch()
         
     cpdef solve(self, np.int_t[:] hint=None):
+        """Solve the LP problem by a number of nearest point problems in constraints space.
+        """
+        
         cdef:
-            np.double_t[:] direction = np.zeros(self.k+1)
-            np.double_t[:,:] RHS = np.empty((self.k+2, self.k+2))
             np.ndarray[ndim=1, dtype=np.double_t] \
-                w = np.empty(self.k+2),\
                 v = np.empty(self.k+1),\
                 Y = np.zeros(self.k+1),\
                 X = np.empty(self.k+1)
-            np.ndarray[ndim=2, dtype=np.double_t] \
-                P = np.empty((self.k+1, self.k+2)),\
-                R = np.empty((self.k+2,self.k+2))
-            np.ndarray[ndim=1, dtype=np.int_t] S = np.zeros(self.k+2, dtype=np.int)
-            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = np.ones(self.k+2,dtype=np.bool)
-            double oldZ = 0, z_d = 0, a, time_a, time_b
-            int i, j, k, mainIterations = 0, lenS = 1
+             
+            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
+            np.ndarray[ndim=1,dtype=np.double_t] w = self.w
+            np.ndarray[ndim=1,dtype=np.int_t] S = self.S
+            double oldZ = 0, z_d = 0, time_a, time_b
+            int k, mainIterations = 0
+            np.double_t[:,:] P = self.P, \
+                             R = self.R
+            np.double_t[:] direction = self.direction            
         
         self.code.setCost(self.llrVector)
-        IF TimeMeasure:
-            self.lstsq_time = self.sp_time = self.cho_time = self.npa_time = self.r_time = 0
-            tmp = os.times()
-            time_a = tmp[0] + tmp[2]
-        # find point with minimum cost in z-direction
-        direction[-1] = 1
+        self.majorCycles = self.minorCycles = 0
+        IF TIMING:
+            self.lstsq_time = self.sp_time = self.cho_time = self.r_time = 0
+        
+        #  find path with minimum cost
+        for k in range(self.k):
+            direction[k] = 0
+        direction[self.k] = 1
         self.solveScalarization(direction, Y)
+        
+        #  test if initial path is feasible
         if norm(Y, self.k) < 1e-8:
-            # initial shortest path feasible
             self.solution = Y
             self.objectiveValue = Y[self.k]
             self.X = np.zeros(self.k+1)
             self.mlCertificate = self.foundCodeword = True
             return
-        # set all but last component to 0 -> initial Y for nearest point algorithm
+        
+        #=======================================================================
+        # set all but last component to 0 to obtain initial Y (reference point on
+        # c-axis) for nearest point algorithm, and initialize parameters of NPA.
+        #=======================================================================
         for k in range(self.k):
             Y[k] = 0
-        self.majorCycles = self.minorCycles = 0
-        
         for k in range(self.k+1):
                 P[k,0] = -Y[k]
+        # initialize S
+        S[0] = 0; self.lenS = 1
         Sfree[0] = False
         for k in range(1, self.k+2):
             Sfree[k] = True
         w[0] = 1
         R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
-        S[0] = 0
-        while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
-            # initialize data arrays for NFA
-            
-            # adjust points in Q
-            for k in range(lenS):
-                P[self.k, S[k]] += oldZ - z_d
-            
-            for k in range(self.k+1):    
-                self.X[k] = v[k]
-            
-            # adjust R
-            IF TimeMeasure:
-                tmp = os.times()
-                time_b = tmp[0] + tmp[2]
-            # compute RHS = ee^T + Q^TQ
-            for i in range(lenS):
-                for j in range(i,lenS):
-                    a = 0
-                    for k in range(self.k+1):
-                        a += P[k,S[i]]*P[k,S[j]]
-                    RHS[i,j] = 1 + a
-            # compute cholesky decomposition of Q^tQ
-            for i in range(lenS):
-                for j in range(i):
-                    a = RHS[j,i]
-                    for k in range(j):
-                        a -= R[S[k],S[i]]*R[S[k],S[j]]
-                    R[S[j],S[i]] = a / R[S[j],S[j]]
-                a = RHS[i,i]
-                for k in range(i):
-                    a -= R[S[k],S[i]]*R[S[k],S[i]]
-                R[S[i],S[i]] = sqrt(a)
-            IF TimeMeasure:
-                tmp = os.times()
-                self.cho_time += tmp[0] + tmp[2] - time_b
-            oldZ = Y[-1]
-            IF TimeMeasure:
-                tmp = os.times()
-                time_b = tmp[0] + tmp[2]
-            lenS = self.NPA(Y, P, S, Sfree, w, R, lenS, X)
-            IF TimeMeasure:
-                tmp = os.times()
-                self.npa_time += tmp[0] + tmp[2] - time_b 
+        
+        while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:            
             mainIterations += 1
+            #  adjust last coordinate of points in Q
+            for k in range(self.lenS):
+                P[self.k, S[k]] += oldZ - z_d
+            #  update R
+            IF TIMING:
+                self.timer.start()
+            self.updateR()
+            IF TIMING:
+                self.cho_time += self.timer.stop()
+            # save current objective value
+            oldZ = Y[-1]
+            #  call nearest point algorithm
+            self.NPA(Y, X) 
+            #  compute v = X-Y
             for k in range(self.k+1):
                 v[k] = X[k] - Y[k]
             if norm(v, self.k+1) < 1e-7:
                 break
+            #  compute z_d = intersection of hyperplane with axis
             z_d = dot(X, v, self.k+1) / v[-1]
             if abs(z_d-oldZ) < 1e-7:
                 break
             Y[-1] = z_d 
         self.objectiveValue = Y[-1]
-        self.mlCertificate = self.foundCodeword = ( np.max(w[S[:lenS]]) > 1-1e-7 )
+        self.mlCertificate = self.foundCodeword = ( np.max(w[S[:self.lenS]]) > 1-1e-7 )
         
-        IF TimeMeasure:
-            tmp = os.times()
+        IF TIMING:
             if len(self.stats) == 0:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = self.stats["cho_time"] = self.stats["r_time"] = 0
             self.stats["lstsq_time"] += self.lstsq_time
             self.stats["sp_time"] += self.sp_time
             self.stats["cho_time"] += self.cho_time
-            self.stats["r_time"] += self.r_time
-            #print('main iterations: {0}   major cycles: {1}   minor cycles: {2}'.format(mainIterations, self.majorCycles, self.minorCycles)) 
+            self.stats["r_time"] += self.r_time 
     
-    cdef int NPA(self,
+    cdef void NPA(self,
             np.ndarray[ndim=1, dtype=np.double_t] Y,
-            np.ndarray[ndim=2, dtype=np.double_t] P,
-            np.ndarray[ndim=1, dtype=np.int_t] S,
-            np.ndarray[ndim=1, dtype=np.uint8_t, cast = True] Sfree,
-            np.ndarray[ndim=1, dtype=np.double_t] w,
-            np.ndarray[ndim=2, dtype=np.double_t] R,
-            int lenS,
             np.ndarray[ndim=1, dtype=np.double_t] X):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
@@ -240,18 +245,25 @@ cdef class NDFDecoder(Decoder):
         # code, and the optimized version is written below that comment line.
         # type definitions
         cdef:
-            np.ndarray[ndim=1, dtype=np.double_t] P_J, space1, space2, space3
+            np.ndarray[ndim=1, dtype=np.double_t] P_J
             double normx, oldnormx, a, b, c, theta, time_a
-            int majorCycle = 0, minorCycle = 0, \
-                i, j, k, newIndex = 1, \
-                IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
+            int majorCycle = 0, minorCycle = 0, i, j, k
+            int newIndex = 1, IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
+            int lenS = self.lenS
             bint cond = False
+            
+            np.double_t[:,:] R = self.R, \
+                             P = self.P
+            np.double_t[:] space1 = self.space1, \
+                           space2 = self.space2, \
+                           space3 = self.space3, \
+                           w = self.w
+            np.int_t[:] S = self.S
+            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
   
         P_J = np.empty(self.k+1)
         oldnormx = 1e20
-        space1 = np.empty(self.k+2, dtype=np.double)
-        space2 = np.empty(self.k+2, dtype=np.double)
-        space3 = np.empty(self.k+2, dtype=np.double)
+
         while True:
             majorCycle += 1
             self.majorCycles += 1
@@ -274,13 +286,13 @@ cdef class NDFDecoder(Decoder):
             oldnormx = normx
             for k in range(self.k+1):
                 P_J[k] = 0
-            IF TimeMeasure:
-                tmp = os.times()
-                time_a = tmp[0] + tmp[2]
+            
+            IF TIMING:
+                self.timer.start()
             self.solveScalarization(X, P_J)
-            IF TimeMeasure:
-                tmp= os.times()
-                self.sp_time += tmp[0] + tmp[2] - time_a
+            IF TIMING:
+                self.sp_time += self.timer.stop()
+            
             P_J[self.k] -= Y[self.k]
             b = dot(P_J, P_J, self.k+1)
             if dot(X, P_J, self.k+1) > normx*normx - 1e-12*sqrt(self.k):
@@ -293,9 +305,8 @@ cdef class NDFDecoder(Decoder):
                     newIndex = k
                     break
                 
-            IF TimeMeasure:
-                    tmp = os.times()
-                    time_a = tmp[0] + tmp[2]
+            IF TIMING:
+                self.timer.start()
             #*rhs= P[:,S].T*P_J
             for i in range(lenS):
                 space2[i] = 0
@@ -304,23 +315,20 @@ cdef class NDFDecoder(Decoder):
             for k in range(lenS):
                 space2[k] += 1
             solveLT(R.T, space2, space1, S, lenS)
-            IF TimeMeasure:
-                tmp = os.times()
-                self.lstsq_time += tmp[0] + tmp[2] - time_a 
+            IF TIMING:
+                self.lstsq_time += self.timer.stop() 
             
             # augment R
             #*R[S,newIndex] = space1
-            IF TimeMeasure:
-                tmp = os.times()
-                time_a = tmp[0] + tmp[2]
+            IF TIMING:
+                self.timer.start()
             for k in range(lenS):
                 R[S[k],newIndex] = space1[k]
                 R[newIndex,S[k]] = 0
             c = dot(space1, space1, lenS)
             R[newIndex,newIndex] = sqrt(1 + b - c)
-            IF TimeMeasure:
-                tmp = os.times()
-                self.r_time += tmp[0] + tmp[2] - time_a
+            IF TIMING:
+                self.r_time += self.timer.stop()
                 
             #*P[:,newIndex] = P_J
             for k in range(self.k+1):
@@ -340,14 +348,12 @@ cdef class NDFDecoder(Decoder):
                 #*space3 = np.ones(lenS)
                 for k in range(self.k+2):
                     space3[k] = 1
-                IF TimeMeasure:
-                    tmp = os.times()
-                    time_a = tmp[0] + tmp[2]
+                IF TIMING:
+                    self.timer.start()
                 solveLT(R.T, space3, space1, S, lenS) #space1= \bar u
                 solveUT(R, space1, space2, S, lenS) #space2 = u
-                IF TimeMeasure:
-                    tmp = os.times()
-                    self.lstsq_time += tmp[0] + tmp[2] - time_a
+                IF TIMING:
+                    self.lstsq_time += self.timer.stop()
                 # check
                 #result = np.linalg.lstsq(np.vstack((np.ones(lenS), Q)), e1)
                 #u_correct = result[0]
@@ -360,7 +366,8 @@ cdef class NDFDecoder(Decoder):
                     if 'NaNs' not in self.stats:
                         self.stats['NaNs'] = 0
                     self.stats['NaNs'] += 1
-                    return lenS-1
+                    self.lenS = lenS-1
+                    return
                 for k in range(lenS):
                     space1[k] = space2[k]/a
                     
@@ -408,9 +415,8 @@ cdef class NDFDecoder(Decoder):
                     firstZeroIndex = S[firstZeroIndexInS]
                     IinS = firstZeroIndexInS
                     
-                    IF TimeMeasure:
-                        tmp = os.times()
-                        time_a = tmp[0] + tmp[2]
+                    IF TIMING:
+                        self.timer.start()
                     if IinS < lenS-1:
                         i = S[IinS]
                         j = S[IinS+1]
@@ -441,9 +447,8 @@ cdef class NDFDecoder(Decoder):
                                 space1[k] = R[S[IinS+2],S[k]]
                                 R[S[IinS+2],S[k]] = space3[k]
                         IinS+=1
-                    IF TimeMeasure:
-                        tmp = os.times()
-                        self.r_time += tmp[0] + tmp[2] - time_a
+                    IF TIMING:
+                        self.r_time += self.timer.stop()
                     # shrink S
                     for i in range(firstZeroIndexInS, lenS-1):
                         S[i] = S[i+1]
@@ -452,20 +457,57 @@ cdef class NDFDecoder(Decoder):
 
         for k in range(self.k+1):
             X[k] += Y[k]
-        return lenS
+        self.lenS = lenS
+        return
 
     cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result):
+        """Solve the weighted sum scalarization problem, i.e. shortest path with modified cost.
+        
+        *direction* defines the weights for the different constraints, where direction[-1] is
+        the weight of the original objective function. The resulting values of g_i(f) and
+        c(f) are placed in *result*.
+        """
+        
         cdef:
             double lamb = direction[self.k], c_result = 0
         for enc in self.code.encoders:
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
-                
+    
+    cdef void updateR(self):
+        """ Update R via cholesky decomposition of Q^T Q.
+        """
+        # compute RHS = ee^T + Q^TQ
+        cdef:
+            int i, j, k
+            double a
+            lenS = self.lenS
+            np.double_t[:,:] P = self.P, \
+                             R = self.R, \
+                             RHS = np.empty((self.k+2, self.k+2))
+            np.int_t[:] S = self.S
+        for i in range(lenS):
+            for j in range(i,lenS):
+                a = 0
+                for k in range(self.k+1):
+                    a += P[k,S[i]]*P[k,S[j]]
+                RHS[i,j] = 1 + a
+        # compute cholesky decomposition of Q^tQ
+        for i in range(lenS):
+            for j in range(i):
+                a = RHS[j,i]
+                for k in range(j):
+                    a -= R[S[k],S[i]]*R[S[k],S[j]]
+                R[S[j],S[i]] = a / R[S[j],S[j]]
+            a = RHS[i,i]
+            for k in range(i):
+                a -= R[S[k],S[i]]*R[S[k],S[i]]
+            R[S[i],S[i]] = sqrt(a)
+        # END cholesky decomposition      
+        
     cpdef params(self):
         return OrderedDict([ ("name", self.name), ("maxMajorCycles", self.maxMajorCycles) ])
-    
-    def __str__(self):
-        return "NDFDecoder"
+
 
 class NDFInteriorDecoder(Decoder):
     def __init__(self, code):
