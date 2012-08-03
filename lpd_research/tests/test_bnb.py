@@ -56,7 +56,8 @@ class TestTurboDecoder(unittest.TestCase):
     def test_decoder(self):
         testProblem = ExampleProblem()
         algorithm = bnb.BranchAndBound(testProblem, depthFirst=True)
-        algorithm.run()
+        sol = algorithm.run()
+        self.assert_(np.all(sol==testProblem.ipSolution))
         
         
 if __name__ == "__main__":

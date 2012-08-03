@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012 helmling
+# Copyright 2012 Michael Helmling, Philipp Reichling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+from __future__ import print_function
 import numpy as np
 from collections import deque
 
@@ -12,7 +13,7 @@ class BranchAndBound:
     def __init__(self, problem, eps=1e-6, depthFirst=True): 
         self.problem = problem
         self.eps = eps
-        self.root = Node(depth=0)
+        self.root = Node()
         self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
@@ -25,13 +26,14 @@ class BranchAndBound:
         while len(self.activeNodes) != 0:
             #select one of the active nodes, move there and solve the corresponding problem
             activeNew = self.getActiveNode()
+            print("active node: {}".format(activeNew))
             self.move(activeOld, activeNew)
             self.problem.solve()
             
             if self.problem.solution != None:
                 #find the Variable to be branched in this node
-                activeNew.branchVariable = self.findVariable(self.problem.solution)
-            
+                branchVariable = self.findVariable(self.problem.solution)
+                print("Variable x{}={} is not integral".format(branchVariable, self.problem.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = self.problem.objectiveValue
                 
@@ -40,28 +42,34 @@ class BranchAndBound:
                 
                 
                 
-                if activeNew.branchVariable == -1:
-                    if self.optimalObjectiveValue > self.problem.solution:
+                if branchVariable == -1:
+                    if self.optimalObjectiveValue > self.problem.objectiveValue:
                         self.optimalSolution = self.problem.solution
                         self.optimalObjectiveValue = self.problem.objectiveValue
-                    activeNew.upperb = self.problem.obejctiveValue
+                    activeNew.upperb = self.problem.objectiveValue
                 self.updBound(activeNew)
             
                 #create new children or close branch
                 if activeNew.lowerb > self.root.upperb:
                     pass
-                elif activeNew.lowerb == activeNew.upperb:
+                elif abs(activeNew.lowerb - activeNew.upperb) < self.eps:
+                    pass
+                elif branchVariable == -1:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    activeNew.child0 = Node(activeNew.depth+1, activeNew, 0)
-                    activeNew.child1 = Node(activeNew.depth+1, activeNew, 1)
+                    activeNew.child0 = Node(activeNew, branchVariable, 0)
+                    activeNew.child1 = Node(activeNew, branchVariable, 1)
                     self.activeNodes.append(activeNew.child1)
                     self.activeNodes.append(activeNew.child0)
             else:
                 activeNew.lowerb = np.inf
                 self.updBound(activeNew)
             activeOld = activeNew
+        print("******* optimal solution found *******")
+        print(self.optimalSolution)
+        print(self.optimalObjectiveValue)
+        return self.optimalSolution
              
             
     
@@ -69,8 +77,10 @@ class BranchAndBound:
         """Moves problem from fromNode to toNode.
         """
         fix = []
+        print('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
             self.problem.unfixVariable(fromNode.branchVariable)
+            print('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
@@ -78,11 +88,12 @@ class BranchAndBound:
             toNode = toNode.parent
             
         while toNode is not fromNode:
+            print('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
-            fix.append( (toNode.branchVariable, toNode.BranchValue) )
+            fix.append( (toNode.branchVariable, toNode.branchValue) )
             fromNode = fromNode.parent
             toNode = toNode.parent
-            
+        print("Fix list: {}".format(fix))
         for var, value in fix:
             if var != None:
                 self.problem.fixVariable(var, value)
@@ -144,13 +155,19 @@ class BranchAndBound:
 
 class Node:
     
-    def __init__(self, depth, parent=None, branchValue = None):
+    def __init__(self, parent=None, branchVariable=None, branchValue=None):
+        assert branchVariable is None or branchVariable >= 0
         self.parent = parent
         self.child0 = None
         self.child1 = None
-        self.branchVariable = None
+        self.branchVariable = branchVariable
         self.branchValue = branchValue
-        self.depth = depth
+        if parent is None:
+            self.depth = 0
+        else:
+            self.depth = parent.depth+1
         self.lowerb = -np.inf
         self.upperb = np.inf
         
+    def __str__(self):
+        return "Node({}, {})".format(self.branchVariable, self.branchValue)
