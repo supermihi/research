@@ -120,6 +120,8 @@ cdef class CSPDecoder(Decoder):
         self.S = np.empty(self.k+2, dtype=np.int)
         self.Sfree = np.empty(self.k+2,dtype=np.bool)
         self.w = np.empty(self.k+2)
+        self.RHS = np.empty((self.k+2, self.k+2))
+        self.P_J = np.empty(self.k+1)
         self.direction = np.empty(self.k+1)
         self.timer = StopWatch()
         
@@ -152,68 +154,80 @@ cdef class CSPDecoder(Decoder):
             direction[k] = 0
         direction[self.k] = 1
         self.solveScalarization(direction, Y)
-        
+        self.lenS = 1
         #  test if initial path is feasible
         if norm(Y, self.k) < 1e-8:
             self.solution = Y
             self.objectiveValue = Y[self.k]
             self.X = np.zeros(self.k+1)
             self.mlCertificate = self.foundCodeword = True
-            return
-        
-        #=======================================================================
-        # set all but last component to 0 to obtain initial Y (reference point on
-        # c-axis) for nearest point algorithm, and initialize parameters of NPA.
-        #=======================================================================
-        for k in range(self.k):
-            Y[k] = 0
-        for k in range(self.k+1):
-                P[k,0] = -Y[k]
-        # initialize S
-        S[0] = 0; self.lenS = 1
-        Sfree[0] = False
-        for k in range(1, self.k+2):
-            Sfree[k] = True
-        w[0] = 1
-        R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
-        
-        while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:            
-            mainIterations += 1
-            #  adjust last coordinate of points in Q
-            for k in range(self.lenS):
-                P[self.k, S[k]] += oldZ - z_d
-            #  update R
-            IF TIMING:
-                self.timer.start()
-            self.updateR()
-            IF TIMING:
-                self.cho_time += self.timer.stop()
-            # save current objective value
-            oldZ = Y[-1]
-            #  call nearest point algorithm
-            self.NPA(Y, X) 
-            #  compute v = X-Y
+        else:
+            #=======================================================================
+            # set all but last component to 0 to obtain initial Y (reference point on
+            # c-axis) for nearest point algorithm, and initialize parameters of NPA.
+            #=======================================================================
+            for k in range(self.k):
+                Y[k] = 0
             for k in range(self.k+1):
-                v[k] = X[k] - Y[k]
-            if norm(v, self.k+1) < 1e-7:
-                break
-            #  compute z_d = intersection of hyperplane with axis
-            z_d = dot(X, v, self.k+1) / v[-1]
-            if abs(z_d-oldZ) < 1e-7:
-                break
-            Y[-1] = z_d 
-        self.objectiveValue = Y[-1]
-        self.mlCertificate = self.foundCodeword = ( np.max(w[S[:self.lenS]]) > 1-1e-7 )
+                    P[k,0] = -Y[k]
+            # initialize S
+            S[0] = 0
+            Sfree[0] = False
+            for k in range(1, self.k+2):
+                Sfree[k] = True
+            w[0] = 1
+            R[0,0] = sqrt(1+dot(Y, Y, self.k+1))
+            
+            while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
+                #===================================================================
+                # Main iterations: push up reference point until we hit the LP solution            
+                #===================================================================
+                mainIterations += 1
+                #  adjust last coordinate of points in Q
+                for k in range(self.lenS):
+                    P[self.k, S[k]] += oldZ - z_d
+                #  update R
+                IF TIMING:
+                    self.timer.start()
+                self.updateR()
+                IF TIMING:
+                    self.cho_time += self.timer.stop()
+                # save current objective value
+                oldZ = Y[-1]
+                #  call nearest point algorithm
+                self.NearestPointAlgorithm(Y, X) 
+                #  compute v = X-Y
+                for k in range(self.k+1):
+                    v[k] = X[k] - Y[k]
+                if norm(v, self.k+1) < 1e-7:
+                    break
+                #  compute z_d = intersection of hyperplane with axis
+                z_d = dot(X, v, self.k+1) / v[-1]
+                if abs(z_d-oldZ) < 1e-7:
+                    break
+                Y[-1] = z_d 
+                self.objectiveValue = Y[-1]
+                self.mlCertificate = self.foundCodeword = ( np.max(w[S[:self.lenS]]) > 1-1e-7 )
         
         IF TIMING:
-            if len(self.stats) == 0:
+            if "sp_time" not in self.stats:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = self.stats["cho_time"] = self.stats["r_time"] = 0
             self.stats["lstsq_time"] += self.lstsq_time
             self.stats["sp_time"] += self.sp_time
             self.stats["cho_time"] += self.cho_time
-            self.stats["r_time"] += self.r_time 
+            self.stats["r_time"] += self.r_time
+        if self.lenS == 1:
+            try:
+                self.stats["vertexSolutions"] += 1
+            except KeyError:
+                self.stats["vertexSolutions"] = 1
+        else:
+            try:
+                self.stats["faceDimension"] += self.lenS -1
+            except KeyError:
+                self.stats["faceDimension"] = self.lenS
     
-    cdef void NPA(self,
+    cdef void NearestPointAlgorithm(self,
             np.ndarray[ndim=1, dtype=np.double_t] Y,
             np.ndarray[ndim=1, dtype=np.double_t] X):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
@@ -245,7 +259,6 @@ cdef class CSPDecoder(Decoder):
         # code, and the optimized version is written below that comment line.
         # type definitions
         cdef:
-            np.ndarray[ndim=1, dtype=np.double_t] P_J
             double normx, oldnormx, a, b, c, theta, time_a
             int majorCycle = 0, minorCycle = 0, i, j, k
             int newIndex = 1, IinS, I, Ip1, firstZeroIndex, firstZeroIndexInS
@@ -257,7 +270,8 @@ cdef class CSPDecoder(Decoder):
             np.double_t[:] space1 = self.space1, \
                            space2 = self.space2, \
                            space3 = self.space3, \
-                           w = self.w
+                           w = self.w, \
+                           P_J = self.P_J
             np.int_t[:] S = self.S
             np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
   
@@ -458,7 +472,6 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.k+1):
             X[k] += Y[k]
         self.lenS = lenS
-        return
 
     cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result):
         """Solve the weighted sum scalarization problem, i.e. shortest path with modified cost.
@@ -481,10 +494,10 @@ cdef class CSPDecoder(Decoder):
         cdef:
             int i, j, k
             double a
-            lenS = self.lenS
+            int lenS = self.lenS
             np.double_t[:,:] P = self.P, \
                              R = self.R, \
-                             RHS = np.empty((self.k+2, self.k+2))
+                             RHS = self.RHS
             np.int_t[:] S = self.S
         for i in range(lenS):
             for j in range(i,lenS):
