@@ -23,7 +23,9 @@ class BranchAndBound:
         """Builds tree and runs a branch and bound algorithm.
         """
         activeOld = self.root
+        branchCount = 0
         while len(self.activeNodes) != 0:
+            
             #select one of the active nodes, move there and solve the corresponding problem
             activeNew = self.getActiveNode()
             print("active node: {}".format(activeNew))
@@ -63,6 +65,7 @@ class BranchAndBound:
                     activeNew.child1 = Node(activeNew, branchVariable, 1)
                     self.activeNodes.append(activeNew.child1)
                     self.activeNodes.append(activeNew.child0)
+                    branchCount = branchCount + 1
             else:
                 activeNew.lowerb = np.inf
                 self.updBound(activeNew)
@@ -70,6 +73,7 @@ class BranchAndBound:
         print("******* optimal solution found *******")
         print(self.optimalSolution)
         print(self.optimalObjectiveValue)
+        print("BranchCount: {count}".format(count=branchCount))
         return self.optimalSolution
              
             
