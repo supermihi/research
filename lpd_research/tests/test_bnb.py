@@ -13,6 +13,7 @@ from lpdecoding.codes.trellis import TDInnerEncoder
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
 
 import unittest
+from lpdecoding.channels import SignalGenerator
 
 class ExampleProblem(problem.Problem):
     
@@ -62,6 +63,22 @@ class TestTurboDecoder(unittest.TestCase):
         algorithm = bnb.BranchAndBound(testProblem, depthFirst=True)
         sol = algorithm.run()
         self.assert_(np.all(sol==testProblem.ipSolution))
+        
+    def test_decoder2(self):
+        interleaver = Interleaver(permutation=[5, 0, 9, 7, 2, 1, 8, 6, 3, 4])
+        code = StandardTurboCode(TDInnerEncoder(), interleaver, "smallTestCode")
+        checkDecoder = CplexTurboLikeDecoder(code, ip=True) 
+        channel = AWGNC(snr=-1, coderate=code.rate, seed=293847)
+        prob = problem.CplexTurboLPProblem(code)
+        gen = SignalGenerator(code, channel, randomCodewords=True, wordSeed=3479)
+        for i in range(100):
+            llr = next(gen)
+            prob.setObjectiveFunction(llr)
+            algo = bnb.BranchAndBound(prob, depthFirst=True)
+            algo.run()
+            checkDecoder.decode(llr)
+            self.assert_(np.all(checkDecoder.solution==algo.optimalSolution))
+            
         
         
 if __name__ == "__main__":
