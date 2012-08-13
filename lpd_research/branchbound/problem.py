@@ -8,7 +8,7 @@
 import numpy as np
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
 
-class Problem:
+class Problem(object):
     
     solution = None
     objectiveValue = np.inf 
@@ -34,11 +34,13 @@ class Problem:
 class CplexTurboLPProblem(Problem):
     
     def __init__(self, code):
-        super().__init__()
+        Problem.__init__(self)
         self.decoder = CplexTurboLikeDecoder(code, ip=False)
         
     def setObjectiveFunction(self, c):
         self.decoder.llrVector = c
+        for i in range(len(self.decoder.x)):
+            self.unfixVariable(i)
         
     def solve(self):
         self.decoder.solve()
