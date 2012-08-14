@@ -10,14 +10,16 @@ from collections import deque
 
 class BranchAndBound:
     
-    def __init__(self, problem, eps=1e-6, selectionMethod=getActiveDFS): 
+    def __init__(self, problem, eps=1e-6, bMethod=DFSMethod): 
         self.problem = problem
         self.eps = eps
         self.root = Node()
-        self.activeNodes = deque([self.root])
+        #the method used to branch at Nodes
+        self.bMethod = bMethod
+        #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
-        self.getActiveNode = selectionMethod
+        #self.getActiveNode = selectionMethod
     
     def run(self):
         """Builds tree and runs a branch and bound algorithm.
@@ -28,7 +30,7 @@ class BranchAndBound:
             
             #select one of the active nodes, move there and solve the corresponding problem
             try:
-                activeNew = self.getActiveNode(self)
+                activeNew = self.bMethod.getActiveNode(self)
             except NodesExhausted:
                 break
             print("active node: {}".format(activeNew))
@@ -66,8 +68,7 @@ class BranchAndBound:
                     #create children with branchValue and add them to the activeNodes-list
                     activeNew.child0 = Node(activeNew, branchVariable, 0)
                     activeNew.child1 = Node(activeNew, branchVariable, 1)
-                    self.activeNodes.append(activeNew.child1)
-                    self.activeNodes.append(activeNew.child0)
+                    self.bMethod.addNodes(activeNew.child0,activeNew.child1)
                     branchCount = branchCount + 1
             else:
                 activeNew.lowerb = np.inf
@@ -187,7 +188,24 @@ class BFSMethod(BranchMethod):
     def addNodes(self, node0, node1):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
+        
+class DFSMethod(BranchMethod):
     
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = deque ( [rootNode])
+
+    def getActiveNode(self):
+        try:
+            return self.activeNodes.pop()
+        except IndexError:
+            raise NodesExhausted()
+        
+    def addNodes(self, node0, node1):
+        self.activeNodes.append(node1)
+        self.activeNodes.append(node0)
+        
+        
 #===============================================================================
 # def getActiveDFS(bnb):
 #    return bnb.activeNodes.pop()       
