@@ -26,6 +26,9 @@ class BranchAndBound:
         """
         activeOld = self.root
         branchCount = 0
+        fixCount = 0
+        unfixCount = 0
+        #moveCount = 0
         while True:
             
             #select one of the active nodes, move there and solve the corresponding problem
@@ -34,7 +37,9 @@ class BranchAndBound:
             except NodesExhausted:
                 break
             print("active node: {}".format(activeNew))
-            self.move(activeOld, activeNew)
+            (fixC, unfixC) = self.move(activeOld, activeNew)
+            fixCount = fixCount + fixC
+            unfixCount = unfixCount + unfixC
             self.problem.solve()
             
             if self.problem.solution != None:
@@ -74,10 +79,11 @@ class BranchAndBound:
                 activeNew.lowerb = np.inf
                 self.updBound(activeNew)
             activeOld = activeNew
+        
         print("******* optimal solution found *******")
         print(self.optimalSolution)
         print(self.optimalObjectiveValue)
-        print("BranchCount: {count}".format(count=branchCount))
+        print("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
         return self.optimalSolution
              
             
@@ -85,26 +91,33 @@ class BranchAndBound:
     def move(self, fromNode, toNode):
         """Moves problem from fromNode to toNode.
         """
+        unfixCount = 0
+        fixCount = 0
         fix = []
         print('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
             self.problem.unfixVariable(fromNode.branchVariable)
+            unfixCount = unfixCount + 1
             print('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
             fix.append( (toNode.branchVariable, toNode.branchValue) )
+            fixCount = fixCount + 1
             toNode = toNode.parent
             
         while toNode is not fromNode:
             print('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
+            unfixCount = unfixCount +1
             fix.append( (toNode.branchVariable, toNode.branchValue) )
             fromNode = fromNode.parent
             toNode = toNode.parent
         print("Fix list: {}".format(fix))
         for var, value in fix:
             self.problem.fixVariable(var, value)
+            fixCount = fixCount + 1
+        return (fixCount, unfixCount)
     
     def updBound(self, node):
         """Updates lower and upper bounds for node and all parent nodes, if possible.
