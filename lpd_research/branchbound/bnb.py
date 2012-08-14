@@ -10,24 +10,27 @@ from collections import deque
 
 class BranchAndBound:
     
-    def __init__(self, problem, eps=1e-6, depthFirst=True): 
+    def __init__(self, problem, eps=1e-6, selectionMethod=getActiveDFS): 
         self.problem = problem
         self.eps = eps
         self.root = Node()
         self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
-        self.depthFirst = depthFirst
+        self.getActiveNode = selectionMethod
     
     def run(self):
         """Builds tree and runs a branch and bound algorithm.
         """
         activeOld = self.root
         branchCount = 0
-        while len(self.activeNodes) != 0:
+        while True:
             
             #select one of the active nodes, move there and solve the corresponding problem
-            activeNew = self.getActiveNode()
+            try:
+                activeNew = self.getActiveNode(self)
+            except NodesExhausted:
+                break
             print("active node: {}".format(activeNew))
             self.move(activeOld, activeNew)
             self.problem.solve()
@@ -144,18 +147,55 @@ class BranchAndBound:
                 return i
         return None
         
+    #===========================================================================
+    # def getActiveNode(self):
+    #    """Gets one active node depending on searchrule from the activeNode-list.
+    #    """
+    #    if self.depthFirst:
+    #        return self.activeNodes.pop()
+    #    else:
+    #        return self.activeNodes.popleft()
+    #===========================================================================
+
+class NodesExhausted(Exception):
+    pass
+
+class BranchMethod:
+    
+    def __init__(self, rootNode):
+        self.root = rootNode
+    
     def getActiveNode(self):
-        """Gets one active node depending on searchrule from the activeNode-list.
-        """
-        if self.depthFirst:
-            return self.activeNodes.pop()
-        else:
+        """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
+        pass
+    
+    def addNodes(self, node0, node1):
+        pass
+
+class BFSMethod(BranchMethod):
+    
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = deque( [rootNode] )
+        
+    def getActiveNode(self):
+        try:
             return self.activeNodes.popleft()
-        
-            
-            
-            
-        
+        except IndexError:
+            raise NodesExhausted()
+    
+    def addNodes(self, node0, node1):
+        self.activeNodes.append(node1)
+        self.activeNodes.append(node0)
+    
+#===============================================================================
+# def getActiveDFS(bnb):
+#    return bnb.activeNodes.pop()       
+#  
+#            
+# def getActiveBFS(bnb):
+#    return bnb.activeNodes.popleft()
+#===============================================================================
 
 class Node:
     
