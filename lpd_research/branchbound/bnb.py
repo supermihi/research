@@ -31,15 +31,17 @@ class BranchAndBound:
         #moveCount = 0
         while True:
             
-            #select one of the active nodes, move there and solve the corresponding problem
+            #select one of the active nodes, move there and (solve the corresponding problem)
             try:
                 activeNew = self.bMethod.getActiveNode(self)
             except NodesExhausted:
                 break
             print("active node: {}".format(activeNew))
+            
             (fixC, unfixC) = self.move(activeOld, activeNew)
             fixCount = fixCount + fixC
             unfixCount = unfixCount + unfixC
+            
             self.problem.solve()
             
             if self.problem.solution != None:
@@ -218,7 +220,27 @@ class DFSMethod(BranchMethod):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
         
+class BBSMethod(BranchMethod):
+    
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = [rootNode]
         
+    def getActiveNode(self):
+        mini = np.inf
+        #in default the first node is returned
+        i = 0
+        for (i,x) in enumerate(self.activeNodes):
+            if mini > x.lowerb:
+                mini = x.lowerb
+                place = i
+        return self.activeNodes.pop(place)
+    
+    def addNodes(self,node0, node1):
+        self.activeNodes.extend([node1, node0])
+        
+            
+         
 #===============================================================================
 # def getActiveDFS(bnb):
 #    return bnb.activeNodes.pop()       
@@ -235,6 +257,10 @@ class Node:
         self.parent = parent
         self.child0 = None
         self.child1 = None
+        #nec to use BestBound
+        self.solution = None
+        self.objectiveValue = None
+        
         self.branchVariable = branchVariable
         self.branchValue = branchValue
         if parent is None:
