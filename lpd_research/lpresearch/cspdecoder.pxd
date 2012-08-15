@@ -6,11 +6,23 @@ cdef class CSPDecoder(Decoder):
     cdef public object constraints
     cdef public double lstsq_time, sp_time, cho_time, r_time
     cdef public int majorCycles, minorCycles, maxMajorCycles
-    cdef public np.ndarray X
     #  temporary variables
-    cdef np.ndarray direction, space1, space2, space3, R, P, S, Sfree, w, RHS, P_J
+    cdef np.ndarray \
+        direction, \
+        space1, space2, space3, \
+        R, \
+        P, \
+        S, Sfree, \
+        w, \
+        RHS, \
+        P_J, \
+        X, \
+        Y
     cdef int lenS
-    cdef void NearestPointAlgorithm(self, np.ndarray[ndim=1, dtype=np.double_t] Y, np.ndarray[ndim=1, dtype=np.double_t] X)
+    cdef void NearestPointAlgorithm(self)
     cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result)
-    cdef void updateR(self)
+    cdef void resetData(self) 
+    cdef void updateData(self, double delta_r)
+    cdef void updateData2(self, double delta_r)
+    cdef int innerLoop(self)
     cdef StopWatch timer
