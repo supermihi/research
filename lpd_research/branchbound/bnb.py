@@ -10,12 +10,12 @@ from collections import deque
 
 class BranchAndBound:
     
-    def __init__(self, problem, eps=1e-6, bMethod=DFSMethod): 
+    def __init__(self, problem, eps=1e-6, BranchMethod=DFSMethod): 
         self.problem = problem
         self.eps = eps
         self.root = Node()
         #the method used to branch at Nodes
-        self.bMethod = bMethod
+        self.bMethod = BranchMethod
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
