@@ -13,21 +13,15 @@
 from __future__ import division, print_function
 
 from collections import OrderedDict
-import logging
 
 import numpy as np
 cimport numpy as np
 from libc.math cimport sqrt, abs
 
 from lpdecoding.core import Decoder
-from lpdecoding.codes import turbolike, interleaver
-from lpdecoding.codes.ctrellis cimport Trellis 
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
 from lpdecoding.codes.trellis import INPUT, PARITY
 from lpdecoding.utils cimport StopWatch
- 
-
-logging.basicConfig(level=logging.ERROR)
 
 DEF TIMING = False # compile-time variable; if True, time of various steps is measured and output
 DEF CREATE_SOLUTION = True
@@ -97,6 +91,7 @@ cdef class CSPDecoder(Decoder):
         if name is None:
             name = "CSPDecoder" 
         self.name = name
+        self.definingEncoder = code.encoders[0]
         #=======================================================================
         # Set coefficients and indices for constraints g_i on the involved
         # trellis graphs.
@@ -116,14 +111,13 @@ cdef class CSPDecoder(Decoder):
         self.space2 = np.empty(self.k+2, dtype=np.double)
         self.space3 = np.empty(self.k+2, dtype=np.double)
         self.X = np.empty(self.k+1)
-        self.Y = np.empty(self.k+1)
         self.P = np.empty((self.k+1, self.k+2))
         self.R = np.empty((self.k+2,self.k+2))
         self.S = np.empty(self.k+2, dtype=np.int)
         self.Sfree = np.empty(self.k+2,dtype=np.int)
         self.w = np.empty(self.k+2)
         self.RHS = np.empty((self.k+2, self.k+2))
-        self.P_J = np.empty(self.k+1)
+        self.paths = np.empty((self.k+2, self.definingEncoder.trellis.length), dtype=np.int)
         self.direction = np.empty(self.k+1)
         self.timer = StopWatch()
         
@@ -134,7 +128,8 @@ cdef class CSPDecoder(Decoder):
         cdef:
             double old_ref = 0, ref = 0, b_r, norm_a_r, delta_r
             int k, mainIterations = 0
-            np.double_t[:] direction = self.direction, Y = self.Y, X = self.X           
+            np.double_t[:] direction = self.direction, X = self.X
+            np.int_t[:,:] paths = self.paths           
         
         self.code.setCost(self.llrVector)
         self.majorCycles = self.minorCycles = 0
@@ -145,19 +140,23 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.k):
             direction[k] = 0
         direction[self.k] = 1
-        self.solveScalarization(direction, Y)
+        self.solveScalarization(direction, X, paths[0,:])
         self.lenS = 1
         #  test if initial path is feasible
-        if norm(Y, self.k) < 1e-8:
-            self.solution = np.asarray(Y).copy()
-            self.objectiveValue = Y[self.k]
+        if norm(X, self.k) < 1e-8:
+            self.lenS = 1
+            self.S[0] = 0
+            self.w[0] = 1
+            self.calculateSolution()
+            self.objectiveValue = X[self.k]
             self.mlCertificate = self.foundCodeword = True
             try:
                 self.stats["immediateSolutions"] += 1
             except KeyError:
                 self.stats["immediateSolutions"] = 1
         else:
-            self.resetData()
+            self.current_ref = X[self.k]
+            self.resetData(X)
             while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
                 #===================================================================
                 # Main iterations: push up reference point until we hit the LP solution            
@@ -170,20 +169,21 @@ cdef class CSPDecoder(Decoder):
                 IF TIMING:
                     self.cho_time += self.timer.stop()
                 # save current objective value
-                old_ref = Y[self.k]
+                old_ref = self.current_ref
                 self.NearestPointAlgorithm()
                 #  compute intersection of hyperplane with c-axis
-                b_r = Y[self.k]*X[self.k] - dot(X, X, self.k+1)
-                norm_a_r = -b_r + Y[self.k]*(Y[self.k] -X[self.k])
+                b_r = self.current_ref*X[self.k] - dot(X, X, self.k+1)
+                norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
                 if norm_a_r < EPS:
                     break
-                ref = b_r / (Y[self.k] - X[self.k])
+                ref = b_r / (self.current_ref - X[self.k])
                 if ref-old_ref < EPS:
                     break
-                self.objectiveValue = Y[self.k] = ref #  update reference point 
+                self.objectiveValue = self.current_ref = ref #  update reference point 
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
             self.mlCertificate = self.foundCodeword = (self.lenS==1)
+            self.calculateSolution()
         
         IF TIMING:
             if "sp_time" not in self.stats:
@@ -214,7 +214,6 @@ cdef class CSPDecoder(Decoder):
     cdef void NearestPointAlgorithm(self):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
-        Y: reference point
         P: matrix of corral points (column-wise)
         S: vector of used indexes for P, w and R
         Sfree: bool array storing which indexes are free in S
@@ -251,9 +250,8 @@ cdef class CSPDecoder(Decoder):
                            space2 = self.space2, \
                            space3 = self.space3, \
                            w = self.w, \
-                           P_J = self.P_J, \
-                           X = self.X, \
-                           Y = self.Y
+                           X = self.X
+            np.int_t[:,:] paths = self.paths
             np.int_t[:] S = self.S, Sfree = self.Sfree
   
         oldnormx = 1e20
@@ -276,35 +274,33 @@ cdef class CSPDecoder(Decoder):
                 #print('small change {0}'.format(normx))
                 break
             if normx >= oldnormx:
-                print("∥X∥ increased in cycle {0}: {1} > {2}".format(self.majorCycles, normx, oldnormx))
+                #print("∥X∥ increased in cycle {0}: {1} > {2}".format(self.majorCycles, normx, oldnormx))
                 break
             oldnormx = normx
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             
-            # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-            # Step 1. (b): P_J = ArgMin(X^T P: P in Polytope)
-            for k in range(self.k+1):
-                P_J[k] = 0
-            IF TIMING:
-                self.timer.start()
-            self.solveScalarization(X, P_J)
-            IF TIMING:
-                self.sp_time += self.timer.stop()
-            P_J[self.k] -= Y[self.k] # translate polytope by -Y
-            # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            
-            # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-            # Step 1. (c): if X^T P_J > X^T X - bla: STOP
-            b = dot(P_J, P_J, self.k+1)
-            if dot(X, P_J, self.k+1) > normx*normx - 1e-12*sqrt(self.k):
-                break
-            # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                        
-            # reserve a new index for augmenting S
+            # reserve a new index (J) for augmenting S
             for k in range(self.k+2):
                 if Sfree[k] == 1:
                     newIndex = k
                     break
+            
+            # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+            # Step 1. (b): P_J = ArgMin(X^T P: P in Polytope)
+            IF TIMING:
+                self.timer.start()
+            self.solveScalarization(X, P[:, newIndex], paths[newIndex,:])
+            IF TIMING:
+                self.sp_time += self.timer.stop()
+            P[self.k, newIndex] -= self.current_ref # translate polytope by -Y
+            # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            
+            # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+            # Step 1. (c): if X^T P_J > X^T X - bla: STOP
+            if dot(X, P[:, newIndex], self.k+1) > normx*normx - 1e-12*sqrt(self.k):
+                break
+            # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (f)
@@ -314,7 +310,7 @@ cdef class CSPDecoder(Decoder):
             for i in range(lenS):
                 space2[i] = 0
                 for j in range(self.k+1):
-                    space2[i] += P[j,S[i]]*P_J[j]
+                    space2[i] += P[j,S[i]]*P[j, newIndex]
             for k in range(lenS):
                 space2[k] += 1
             # solve for r (r=space1 here)
@@ -332,6 +328,7 @@ cdef class CSPDecoder(Decoder):
                 R[S[k],newIndex] = space1[k]
                 R[newIndex,S[k]] = 0
             c = dot(space1, space1, lenS)
+            b = dot(P[:, newIndex], P[:, newIndex], self.k+1)
             R[newIndex,newIndex] = sqrt(1 + b - c)
             IF TIMING:
                 self.r_time += self.timer.stop()
@@ -339,8 +336,6 @@ cdef class CSPDecoder(Decoder):
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (e): S = S \cup J
-            for k in range(self.k+1):
-                P[k,newIndex] = P_J[k]
             S[lenS] = newIndex
             Sfree[newIndex] = 0
             w[newIndex] = 0
@@ -370,7 +365,7 @@ cdef class CSPDecoder(Decoder):
                     Sfree[k] = (k != j)
                 
         # translate  solution back
-        X[self.k] += Y[self.k]
+        X[self.k] += self.current_ref
         self.lenS = lenS
 
     cdef int innerLoop(self):
@@ -500,7 +495,7 @@ cdef class CSPDecoder(Decoder):
         self.lenS = lenS
         return 1
     
-    cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result):
+    cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result, np.int_t[:] path):
         """Solve the weighted sum scalarization problem, i.e. shortest path with modified cost.
         
         *direction* defines the weights for the different constraints, where direction[-1] is
@@ -510,32 +505,37 @@ cdef class CSPDecoder(Decoder):
         
         cdef:
             double lamb = direction[self.k], c_result = 0
+            int k
+        for k in range(self.k):
+            result[k] = 0
         for enc in self.code.encoders:
-            c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
+            if enc is self.definingEncoder:
+                c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, path)
+            else:
+                c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
         result[self.k] = c_result
     
-    cdef void resetData(self):
-        """Initialize S, w, R, and P given the initial Y."""
+    cdef void resetData(self, np.double_t[:] initPoint):
+        """Initialize S, w, R, and P given the initial point."""
         cdef:
             int k
             double norm_p1_sq = 0
             np.double_t[:,:] P = self.P, \
                              R = self.R
-            np.double_t[:] Y = self.Y, w = self.w
+            np.double_t[:] w = self.w
             np.int_t[:] S = self.S, Sfree = self.Sfree
 
-        R[0,0] = sqrt(1+dot(Y, Y, self.k))
+        R[0,0] = sqrt(1+dot(initPoint, initPoint, self.k))
         for k in range(self.k):
-            P[k,0] = Y[k]
-            Y[k] = 0
+            P[k,0] = initPoint[k]
         P[self.k, 0] = 0
-        
         self.lenS = 1
         S[0] = 0
         Sfree[0] = 0
         for k in range(1, self.k+2):
             Sfree[k] = 1
         w[0] = 1
+        self.current_ref = initPoint[self.k]
         
     cdef void updateData(self, double delta_r):
         """ Update P and R via cholesky decomposition of Q^T Q."""
@@ -571,35 +571,48 @@ cdef class CSPDecoder(Decoder):
             R[S[i],S[i]] = sqrt(a)
         # END cholesky decomposition
         self.innerLoop()
-        
-    cdef void updateData2(self, double delta_r):
-        """Test method; didn't work out."""
+    
+    cdef void calculateSolution(self):
         cdef:
-            int i, j, k, min_index
-            double a, min_value=9e20
-            int lenS = self.lenS
-            np.double_t[:,:] P = self.P, \
-                             R = self.R
-            np.int_t[:] S = self.S, Sfree = self.Sfree
+            np.ndarray[ndim=1,dtype=np.double_t] solution = self.solution
+            np.int_t[:,:] paths = self.paths
+            np.int_t[:] S = self.S
             np.double_t[:] w = self.w
-            
+            int k
+        self.solution = np.zeros(self.code.blocklength, dtype=np.double)
         for k in range(self.lenS):
-            P[self.k, S[k]] += delta_r
-            a = 0
-            for i in range(self.k+1):
-                a += np.square(P[i, S[k]])
-            if a < min_value:
-                min_value = a
-                min_index = k
-        
-        R[min_index,min_index] = sqrt(1+a)
-        # initialize S, w, and R
-        self.lenS = 1
-        S[0] = min_index
-        Sfree[min_index] = 0
-        for k in range(self.k+2):
-            Sfree[k] = (k != min_index)
-        w[min_index] = 1
+            self.solution += w[S[k]]*self.code.encode(paths[S[k],:])
+            
+    #===========================================================================
+    # cdef void updateData2(self, double delta_r):
+    #    """Test method; didn't work out."""
+    #    cdef:
+    #        int i, j, k, min_index
+    #        double a, min_value=9e20
+    #        int lenS = self.lenS
+    #        np.double_t[:,:] P = self.P, \
+    #                         R = self.R
+    #        np.int_t[:] S = self.S, Sfree = self.Sfree
+    #        np.double_t[:] w = self.w
+    #        
+    #    for k in range(self.lenS):
+    #        P[self.k, S[k]] += delta_r
+    #        a = 0
+    #        for i in range(self.k+1):
+    #            a += np.square(P[i, S[k]])
+    #        if a < min_value:
+    #            min_value = a
+    #            min_index = k
+    #    
+    #    R[min_index,min_index] = sqrt(1+a)
+    #    # initialize S, w, and R
+    #    self.lenS = 1
+    #    S[0] = min_index
+    #    Sfree[min_index] = 0
+    #    for k in range(self.k+2):
+    #        Sfree[k] = (k != min_index)
+    #    w[min_index] = 1
+    #===========================================================================
     
     cpdef params(self):
         return OrderedDict([ ("name", self.name), ("maxMajorCycles", self.maxMajorCycles) ])
