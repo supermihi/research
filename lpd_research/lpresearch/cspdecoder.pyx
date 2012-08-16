@@ -2,6 +2,7 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
+# cython: wraparound=False
 # Copyright 2012 Michael Helmling
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -28,10 +29,10 @@ from lpdecoding.utils cimport StopWatch
 
 logging.basicConfig(level=logging.ERROR)
 
-DEF TIMING = True # compile-time variable; if True, time of various steps is measured and output
+DEF TIMING = False # compile-time variable; if True, time of various steps is measured and output
 DEF CREATE_SOLUTION = True
 
-cdef double EPS = 1e-10
+DEF EPS = 1e-9
 
 cdef inline double norm(np.double_t[:] a, int size):
     """computes the L2-norm of a[:size]"""
@@ -119,7 +120,7 @@ cdef class CSPDecoder(Decoder):
         self.P = np.empty((self.k+1, self.k+2))
         self.R = np.empty((self.k+2,self.k+2))
         self.S = np.empty(self.k+2, dtype=np.int)
-        self.Sfree = np.empty(self.k+2,dtype=np.bool)
+        self.Sfree = np.empty(self.k+2,dtype=np.int)
         self.w = np.empty(self.k+2)
         self.RHS = np.empty((self.k+2, self.k+2))
         self.P_J = np.empty(self.k+1)
@@ -151,38 +152,38 @@ cdef class CSPDecoder(Decoder):
             self.solution = np.asarray(Y).copy()
             self.objectiveValue = Y[self.k]
             self.mlCertificate = self.foundCodeword = True
+            try:
+                self.stats["immediateSolutions"] += 1
+            except KeyError:
+                self.stats["immediateSolutions"] = 1
         else:
-            
             self.resetData()
-            
             while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
                 #===================================================================
                 # Main iterations: push up reference point until we hit the LP solution            
                 #===================================================================
                 mainIterations += 1
-                #  adjust last coordinate of points in P
-                delta_r = old_ref - ref
                 IF TIMING:
                     self.timer.start()
+                delta_r = old_ref - ref
                 self.updateData(delta_r)
                 IF TIMING:
                     self.cho_time += self.timer.stop()
                 # save current objective value
                 old_ref = Y[self.k]
-                #  call nearest point algorithm
                 self.NearestPointAlgorithm()
+                #  compute intersection of hyperplane with c-axis
                 b_r = Y[self.k]*X[self.k] - dot(X, X, self.k+1)
                 norm_a_r = -b_r + Y[self.k]*(Y[self.k] -X[self.k])
-                if norm_a_r < 1e-7:
+                if norm_a_r < EPS:
                     break
-                #  compute b_r = intersection of hyperplane with axis
-                ref = b_r / (Y[self.k]
-                              - X[self.k])
-                if ref-old_ref < 1e-7:
+                ref = b_r / (Y[self.k] - X[self.k])
+                if ref-old_ref < EPS:
                     break
-                Y[self.k] = ref 
-                self.objectiveValue = ref
-            self.mlCertificate = self.foundCodeword = ( np.max(self.w[self.S[:self.lenS]]) > 1-1e-7 )
+                self.objectiveValue = Y[self.k] = ref #  update reference point 
+            # if the LP solution is convex combination of only 1 vertex, it must
+            # be a codeword (and thus, ML certificate is present)
+            self.mlCertificate = self.foundCodeword = (self.lenS==1)
         
         IF TIMING:
             if "sp_time" not in self.stats:
@@ -244,7 +245,6 @@ cdef class CSPDecoder(Decoder):
             int i, j, k
             int newIndex = 1, I
             int lenS = self.lenS
-            
             np.double_t[:,:] R = self.R, \
                              P = self.P
             np.double_t[:] space1 = self.space1, \
@@ -254,38 +254,32 @@ cdef class CSPDecoder(Decoder):
                            P_J = self.P_J, \
                            X = self.X, \
                            Y = self.Y
-            np.int_t[:] S = self.S
-            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
+            np.int_t[:] S = self.S, Sfree = self.Sfree
   
         oldnormx = 1e20
         while True:
             self.majorCycles += 1
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (a): X = P[S] * w
-            #*np.dot(P[:,S], w[S], X)
             for i in range(self.k+1):
                 X[i] = 0
                 for j in range(lenS):
                     X[i] += P[i,S[j]]*w[S[j]]
-            #*
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # stopping criteria: ||X|| small or increased
-            #
             normx = norm(X, self.k+1)
-            if normx < 1e-8:
+            if normx < EPS:
                 break
-            if abs(normx-oldnormx) < 1e-10 and normx < 1e-7:
+            if abs(normx-oldnormx) < 1e-10 and normx < EPS:
                 #print('small change {0}'.format(normx))
                 break
-            if normx >= oldnormx:#+EPS:
-                #print("∥X∥ increased in cycle {0}: {1} > {2}".format(majorCycle, normx, oldnormx))
+            if normx >= oldnormx:
+                print("∥X∥ increased in cycle {0}: {1} > {2}".format(self.majorCycles, normx, oldnormx))
                 break
             oldnormx = normx
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (b): P_J = ArgMin(X^T P: P in Polytope)
@@ -299,17 +293,13 @@ cdef class CSPDecoder(Decoder):
             P_J[self.k] -= Y[self.k] # translate polytope by -Y
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             
-            
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (c): if X^T P_J > X^T X - bla: STOP
             b = dot(P_J, P_J, self.k+1)
             if dot(X, P_J, self.k+1) > normx*normx - 1e-12*sqrt(self.k):
-                #logging.debug('stop in 1 (c)')
                 break
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            
-            #*newIndex = np.flatnonzero(Sfree)[0]
-            
+                        
             # reserve a new index for augmenting S
             for k in range(self.k+2):
                 if Sfree[k] == 1:
@@ -318,23 +308,20 @@ cdef class CSPDecoder(Decoder):
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (f)
-            # rhs = P[S]^T P_J    
+            # rhs = P[S]^T P_J + 1
             IF TIMING:
                 self.timer.start()
-            #*rhs= P[:,S].T*P_J
             for i in range(lenS):
                 space2[i] = 0
                 for j in range(self.k+1):
                     space2[i] += P[j,S[i]]*P_J[j]
-            # rhs += 1
             for k in range(lenS):
                 space2[k] += 1
+            # solve for r (r=space1 here)
             solveLT(R.T, space2, space1, S, lenS)
-            # solve for r (as space1)
             IF TIMING:
                 self.lstsq_time += self.timer.stop() 
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (g): augment R
@@ -350,29 +337,44 @@ cdef class CSPDecoder(Decoder):
                 self.r_time += self.timer.stop()
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             
-            
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (e): S = S \cup J
-            #*P[:,newIndex] = P_J
             for k in range(self.k+1):
                 P[k,newIndex] = P_J[k]
-            # augment S
-            #S = np.append(S, newIndex)
             S[lenS] = newIndex
-            Sfree[newIndex] = False
+            Sfree[newIndex] = 0
             w[newIndex] = 0
             lenS += 1
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             
+            # run inner loops (steps 2 & 3)
             self.lenS = lenS
             if self.innerLoop() == -1:
                 return
             lenS = self.lenS
-            
+        
+        # round out
+        if lenS > 1:
+            j=-1
+            for k in range(lenS):
+                if w[S[k]] > 1-EPS:
+                    j=k
+                    w[S[k]] = 1
+                    break
+            if j != -1:
+                for k in range(self.k+1):
+                    X[k] = P[k,j]
+                lenS = 1
+                S[0] = j
+                for k in range(self.k+2):
+                    Sfree[k] = (k != j)
+                
+        # translate  solution back
         X[self.k] += Y[self.k]
         self.lenS = lenS
 
     cdef int innerLoop(self):
+        """Perform the inner loop (step 2+3) of the nearest point algorithm."""
         cdef:
             int i, j, k, lenS = self.lenS
             int firstZeroIndex, firstZeroIndexInS, IinS, Ip1, I
@@ -383,23 +385,24 @@ cdef class CSPDecoder(Decoder):
                            space3 = self.space3, \
                            w = self.w
             np.double_t[:,:] R = self.R
-            np.int_t[:] S = self.S
-            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
+            np.int_t[:] S = self.S, Sfree = self.Sfree
         
         while True:
+            # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+            # Step 2 (a): solve the equations (4.1) using method D
+            #
+            # space3 = e
             for k in range(self.k+2):
                 space3[k] = 1
             IF TIMING:
                 self.timer.start()
-            solveLT(R.T, space3, space1, S, lenS) #space1= \bar u
-            solveUT(R, space1, space2, S, lenS) #space2 = u
+            # space1 = \bar u
+            solveLT(R.T, space3, space1, S, lenS)
+            # space2 = u
+            solveUT(R, space1, space2, S, lenS)
             IF TIMING:
                 self.lstsq_time += self.timer.stop()
-            # check
-            #result = np.linalg.lstsq(np.vstack((np.ones(lenS), Q)), e1)
-            #u_correct = result[0]
-            
-            #*space1 = space2 / np.sum(space2) #space1=v
+            # space1 = v = space2 / np.sum(space2)
             # a = np.sum(space2) # remember: space3 = ones!
             a= dot(space2, space3, lenS)
             if np.isnan(a):
@@ -411,8 +414,9 @@ cdef class CSPDecoder(Decoder):
                 return -1
             for k in range(lenS):
                 space1[k] = space2[k]/a
-    
-            #*if np.all(space1 > EPS):
+            # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            
+            # Step 2 (b): if (v=space1) > EPS:
             cond = True
             for k in range(lenS):
                 if space1[k] <= EPS:
@@ -423,6 +427,7 @@ cdef class CSPDecoder(Decoder):
                 for k in range(lenS):
                     w[S[k]] = space1[k]
                 break
+            
             self.minorCycles += 1
             #*POS = np.flatnonzero(space1 <= EPS) # 3 (a) corrected                    
             #*theta = min(1, np.max(space1[POS]/(space1[POS] - w[S][POS]))) # 3 (b) corrected
@@ -490,7 +495,7 @@ cdef class CSPDecoder(Decoder):
             # shrink S
             for i in range(firstZeroIndexInS, lenS-1):
                 S[i] = S[i+1]
-            Sfree[firstZeroIndex] = True
+            Sfree[firstZeroIndex] = 1
             lenS -= 1
         self.lenS = lenS
         return 1
@@ -510,33 +515,31 @@ cdef class CSPDecoder(Decoder):
         result[self.k] = c_result
     
     cdef void resetData(self):
+        """Initialize S, w, R, and P given the initial Y."""
         cdef:
             int k
             double norm_p1_sq = 0
             np.double_t[:,:] P = self.P, \
                              R = self.R
             np.double_t[:] Y = self.Y, w = self.w
-            np.int_t[:] S = self.S
-            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
+            np.int_t[:] S = self.S, Sfree = self.Sfree
 
-        
         R[0,0] = sqrt(1+dot(Y, Y, self.k))
         for k in range(self.k):
             P[k,0] = Y[k]
             Y[k] = 0
         P[self.k, 0] = 0
-        # initialize S, w, and R
+        
         self.lenS = 1
         S[0] = 0
-        Sfree[0] = False
+        Sfree[0] = 0
         for k in range(1, self.k+2):
-            Sfree[k] = True
+            Sfree[k] = 1
         w[0] = 1
         
     cdef void updateData(self, double delta_r):
-        """ Update R via cholesky decomposition of Q^T Q.
-        """
-        # compute RHS = ee^T + Q^TQ
+        """ Update P and R via cholesky decomposition of Q^T Q."""
+        
         cdef:
             int i, j, k
             double a
@@ -548,6 +551,7 @@ cdef class CSPDecoder(Decoder):
             
         for k in range(self.lenS):
             P[self.k, S[k]] += delta_r
+        # compute RHS = ee^T + Q^TQ
         for i in range(lenS):
             for j in range(i,lenS):
                 a = 0
@@ -569,16 +573,15 @@ cdef class CSPDecoder(Decoder):
         self.innerLoop()
         
     cdef void updateData2(self, double delta_r):
+        """Test method; didn't work out."""
         cdef:
             int i, j, k, min_index
             double a, min_value=9e20
             int lenS = self.lenS
             np.double_t[:,:] P = self.P, \
                              R = self.R
-            np.int_t[:] S = self.S
+            np.int_t[:] S = self.S, Sfree = self.Sfree
             np.double_t[:] w = self.w
-            
-            np.ndarray[ndim=1,dtype=np.uint8_t,cast=True] Sfree = self.Sfree
             
         for k in range(self.lenS):
             P[self.k, S[k]] += delta_r
@@ -593,9 +596,9 @@ cdef class CSPDecoder(Decoder):
         # initialize S, w, and R
         self.lenS = 1
         S[0] = min_index
-        Sfree[min_index] = False
+        Sfree[min_index] = 0
         for k in range(self.k+2):
-            Sfree[k] = k != min_index
+            Sfree[k] = (k != min_index)
         w[min_index] = 1
     
     cpdef params(self):

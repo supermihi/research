@@ -17,7 +17,8 @@ cdef class CSPDecoder(Decoder):
         RHS, \
         P_J, \
         X, \
-        Y
+        Y, \
+        paths
     cdef int lenS
     cdef void NearestPointAlgorithm(self)
     cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result)
