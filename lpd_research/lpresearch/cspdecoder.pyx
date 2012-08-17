@@ -345,7 +345,7 @@ cdef class CSPDecoder(Decoder):
             # run inner loops (steps 2 & 3)
             self.lenS = lenS
             if self.innerLoop() == -1:
-                return
+                break
             lenS = self.lenS
         
         # round out
@@ -405,6 +405,7 @@ cdef class CSPDecoder(Decoder):
                 if 'NaNs' not in self.stats:
                     self.stats['NaNs'] = 0
                 self.stats['NaNs'] += 1
+                print(' NAN', end='')
                 self.lenS = lenS-1
                 return -1
             for k in range(lenS):
