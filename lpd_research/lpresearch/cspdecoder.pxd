@@ -22,7 +22,7 @@ cdef class CSPDecoder(Decoder):
         paths
     cdef int lenS
     cdef double current_ref
-    cdef void NearestPointAlgorithm(self)
+    cdef bint NearestPointAlgorithm(self)
     cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result, np.int_t[:] path)
     cdef void resetData(self, np.double_t[:] initPoint) 
     cdef void updateData(self, double delta_r)

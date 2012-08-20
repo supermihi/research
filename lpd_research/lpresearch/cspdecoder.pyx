@@ -170,7 +170,12 @@ cdef class CSPDecoder(Decoder):
                     self.cho_time += self.timer.stop()
                 # save current objective value
                 old_ref = self.current_ref
-                self.NearestPointAlgorithm()
+                if not self.NearestPointAlgorithm():
+                    try:
+                        self.stats["NaNs"] += 1
+                    except KeyError:
+                        self.stats["NaNs"] = 1
+                    break
                 #  compute intersection of hyperplane with c-axis
                 b_r = self.current_ref*X[self.k] - dot(X, X, self.k+1)
                 norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
@@ -211,7 +216,7 @@ cdef class CSPDecoder(Decoder):
         except KeyError:
             self.stats["majorCycles"] = self.majorCycles
     
-    cdef void NearestPointAlgorithm(self):
+    cdef bint NearestPointAlgorithm(self):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         P: matrix of corral points (column-wise)
@@ -345,7 +350,8 @@ cdef class CSPDecoder(Decoder):
             # run inner loops (steps 2 & 3)
             self.lenS = lenS
             if self.innerLoop() == -1:
-                break
+                X[self.k] += self.current_ref
+                return False
             lenS = self.lenS
         
         # round out
@@ -367,6 +373,7 @@ cdef class CSPDecoder(Decoder):
         # translate  solution back
         X[self.k] += self.current_ref
         self.lenS = lenS
+        return True
 
     cdef int innerLoop(self):
         """Perform the inner loop (step 2+3) of the nearest point algorithm."""
@@ -381,7 +388,6 @@ cdef class CSPDecoder(Decoder):
                            w = self.w
             np.double_t[:,:] R = self.R
             np.int_t[:] S = self.S, Sfree = self.Sfree
-        
         while True:
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 2 (a): solve the equations (4.1) using method D
@@ -400,18 +406,10 @@ cdef class CSPDecoder(Decoder):
             # space1 = v = space2 / np.sum(space2)
             # a = np.sum(space2) # remember: space3 = ones!
             a= dot(space2, space3, lenS)
-            if np.isnan(a):
-                # a numerically bad case that happens extremely seldom
-                if 'NaNs' not in self.stats:
-                    self.stats['NaNs'] = 0
-                self.stats['NaNs'] += 1
-                print(' NAN', end='')
-                self.lenS = lenS-1
-                return -1
             for k in range(lenS):
                 space1[k] = space2[k]/a
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            
+
             # Step 2 (b): if (v=space1) > EPS:
             cond = True
             for k in range(lenS):
@@ -450,7 +448,9 @@ cdef class CSPDecoder(Decoder):
                     w[i] = 0
                     if firstZeroIndexInS == -1:
                         firstZeroIndexInS = k
-            #*
+            if firstZeroIndexInS == -1:
+                # numerically desastrous case
+                return -1
             firstZeroIndex = S[firstZeroIndexInS]
             IinS = firstZeroIndexInS
             
