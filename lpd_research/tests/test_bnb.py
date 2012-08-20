@@ -28,12 +28,15 @@ class TestTurboDecoder(unittest.TestCase):
         for i in range(RANDOM_TRIALS):
             llr = next(gen)
             prob.setObjectiveFunction(llr)
-            algo = bnb.BranchAndBound(prob, depthFirst=False)
-            sol = algo.run()
-            checkDecoder.decode(llr)
-            self.assert_(np.allclose(checkDecoder.solution, sol),
-                         "{} ({}) != {} ({})".format(sol, algo.optimalObjectiveValue,
-                                                     checkDecoder.objectiveValue, checkDecoder.solution))
+            algoDFS = bnb.BranchAndBound(prob, branchMethod=bnb.DFSMethod)
+            algoBFS = bnb.BranchAndBound(prob, branchMethod=bnb.DFSMethod)
+            algoBBS = bnb.BranchAndBound(prob, branchMethod=bnb.BBSMethod)
+            for algo in algoDFS, algoBFS, algoBBS:
+                sol = algo.run()
+                checkDecoder.decode(llr)
+                self.assert_(np.allclose(checkDecoder.solution, sol),
+                             "{} ({}) != {} ({})".format(sol, algo.optimalObjectiveValue,
+                                                         checkDecoder.objectiveValue, checkDecoder.solution))
 
     def dont_test_medium_code(self):
         code = LTETurboCode(40)

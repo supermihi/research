@@ -8,14 +8,78 @@ from __future__ import print_function
 import numpy as np
 from collections import deque
 
+class BranchMethod:
+    
+    def __init__(self, rootNode):
+        self.root = rootNode
+    
+    def getActiveNode(self):
+        """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
+        pass
+    
+    def addNodes(self, node0, node1):
+        pass
+
+class BFSMethod(BranchMethod):
+    
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = deque( [rootNode] )
+        
+    def getActiveNode(self):
+        try:
+            return self.activeNodes.popleft()
+        except IndexError:
+            raise NodesExhausted()
+    
+    def addNodes(self, node0, node1):
+        self.activeNodes.append(node1)
+        self.activeNodes.append(node0)
+        
+class DFSMethod(BranchMethod):
+    
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = deque ( [rootNode])
+
+    def getActiveNode(self):
+        try:
+            return self.activeNodes.pop()
+        except IndexError:
+            raise NodesExhausted()
+        
+    def addNodes(self, node0, node1):
+        self.activeNodes.append(node1)
+        self.activeNodes.append(node0)
+        
+class BBSMethod(BranchMethod):
+    
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = [rootNode]
+        
+    def getActiveNode(self):
+        mini = np.inf
+        #in default the first node is returned
+        i = 0
+        for (i,x) in enumerate(self.activeNodes):
+            if mini > x.lowerb:
+                mini = x.lowerb
+                place = i
+        return self.activeNodes.pop(place)
+    
+    def addNodes(self,node0, node1):
+        self.activeNodes.extend([node1, node0])
+
+
 class BranchAndBound:
     
-    def __init__(self, problem, eps=1e-6, BranchMethod=DFSMethod): 
+    def __init__(self, problem, eps=1e-6, branchMethod=DFSMethod): 
         self.problem = problem
         self.eps = eps
         self.root = Node()
         #the method used to branch at Nodes
-        self.bMethod = BranchMethod
+        self.bMethod = branchMethod(self.root)
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
@@ -33,7 +97,7 @@ class BranchAndBound:
             
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
-                activeNew = self.bMethod.getActiveNode(self)
+                activeNew = self.bMethod.getActiveNode()
             except NodesExhausted:
                 break
             print("active node: {}".format(activeNew))
@@ -48,7 +112,8 @@ class BranchAndBound:
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(self.problem.solution)
                 if branchVariable is not None:
-                    print("Variable x{}={} is not integral".format(branchVariable, self.problem.solution[branchVariable]))
+                    print("Variable x{}={} is not integral"
+                          .format(branchVariable, self.problem.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = self.problem.objectiveValue
                 
@@ -176,68 +241,7 @@ class BranchAndBound:
 class NodesExhausted(Exception):
     pass
 
-class BranchMethod:
-    
-    def __init__(self, rootNode):
-        self.root = rootNode
-    
-    def getActiveNode(self):
-        """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
-        pass
-    
-    def addNodes(self, node0, node1):
-        pass
 
-class BFSMethod(BranchMethod):
-    
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
-        self.activeNodes = deque( [rootNode] )
-        
-    def getActiveNode(self):
-        try:
-            return self.activeNodes.popleft()
-        except IndexError:
-            raise NodesExhausted()
-    
-    def addNodes(self, node0, node1):
-        self.activeNodes.append(node1)
-        self.activeNodes.append(node0)
-        
-class DFSMethod(BranchMethod):
-    
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
-        self.activeNodes = deque ( [rootNode])
-
-    def getActiveNode(self):
-        try:
-            return self.activeNodes.pop()
-        except IndexError:
-            raise NodesExhausted()
-        
-    def addNodes(self, node0, node1):
-        self.activeNodes.append(node1)
-        self.activeNodes.append(node0)
-        
-class BBSMethod(BranchMethod):
-    
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
-        self.activeNodes = [rootNode]
-        
-    def getActiveNode(self):
-        mini = np.inf
-        #in default the first node is returned
-        i = 0
-        for (i,x) in enumerate(self.activeNodes):
-            if mini > x.lowerb:
-                mini = x.lowerb
-                place = i
-        return self.activeNodes.pop(place)
-    
-    def addNodes(self,node0, node1):
-        self.activeNodes.extend([node1, node0])
         
             
          
