@@ -1,3 +1,9 @@
 *.pyc
 *.log
 *.lp
+*.egg-info
+*.so
+*.c
+*.sqlite
+*.sqlite3
+build/
