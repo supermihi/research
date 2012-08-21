@@ -20,11 +20,8 @@ from libc.math cimport sqrt, abs
 
 from lpdecoding.core import Decoder
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
-from lpdecoding.codes.trellis import INPUT, PARITY
+from lpdecoding.codes.trellis import INFO, PARITY
 from lpdecoding.utils cimport StopWatch
-
-DEF TIMING = False # compile-time variable; if True, time of various steps is measured and output
-DEF CREATE_SOLUTION = True
 
 DEF EPS = 1e-9
 
@@ -72,12 +69,12 @@ cdef void solveUT(np.double_t[:,:] a,
             tmp -= x[j]*a[S[i],S[j]]
         x[i] = tmp / a[S[i],S[i]]
 
-labelStr = { INPUT: "input", PARITY: "parity"}
+labelStr = { INFO: "info", PARITY: "parity"}
 
 cdef class CSPDecoder(Decoder):
     """Constrained Shortest Path Decoder."""
     
-    def __init__(self, code, name=None, maxMajorCycles=0):
+    def __init__(self, code, name=None, maxMajorCycles=0, measureTimes=False):
         """Initialize the decoder for a *code* and name it *name*.
         
         Optionally you may supply *maxMajorCycles* to limit the maximum number of major cycles
@@ -88,6 +85,7 @@ cdef class CSPDecoder(Decoder):
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
         self.maxMajorCycles = maxMajorCycles
+        self.measureTimes = measureTimes
         if name is None:
             name = "CSPDecoder" 
         self.name = name
@@ -133,8 +131,8 @@ cdef class CSPDecoder(Decoder):
         
         self.code.setCost(self.llrVector)
         self.majorCycles = self.minorCycles = 0
-        IF TIMING:
-            self.lstsq_time = self.sp_time = self.cho_time = self.r_time = 0
+        if self.measureTimes:
+            self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.gensol_time = 0
         
         #  find path with minimum cost
         for k in range(self.k):
@@ -162,11 +160,11 @@ cdef class CSPDecoder(Decoder):
                 # Main iterations: push up reference point until we hit the LP solution            
                 #===================================================================
                 mainIterations += 1
-                IF TIMING:
+                if self.measureTimes:
                     self.timer.start()
                 delta_r = old_ref - ref
                 self.updateData(delta_r)
-                IF TIMING:
+                if self.measureTimes:
                     self.cho_time += self.timer.stop()
                 # save current objective value
                 old_ref = self.current_ref
@@ -188,15 +186,23 @@ cdef class CSPDecoder(Decoder):
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
             self.mlCertificate = self.foundCodeword = (self.lenS==1)
+            if self.measureTimes:
+                self.timer.start()
             self.calculateSolution()
+            if self.measureTimes:
+                self.gensol_time += self.timer.stop()
         
-        IF TIMING:
+        if self.measureTimes:
             if "sp_time" not in self.stats:
-                self.stats["lstsq_time"] = self.stats["sp_time"] = self.stats["cho_time"] = self.stats["r_time"] = 0
+                self.stats["lstsq_time"] = self.stats["sp_time"] = 0
+                self.stats["cho_time"] = self.stats["r_time"] = 0
+                self.stats["gensol_time"] = 0
             self.stats["lstsq_time"] += self.lstsq_time
             self.stats["sp_time"] += self.sp_time
             self.stats["cho_time"] += self.cho_time
             self.stats["r_time"] += self.r_time
+            self.stats["gensol_time"] += self.gensol_time
+        
         if self.lenS == 1:
             try:
                 self.stats["vertexSolutions"] += 1
@@ -292,10 +298,10 @@ cdef class CSPDecoder(Decoder):
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (b): P_J = ArgMin(X^T P: P in Polytope)
-            IF TIMING:
+            if self.measureTimes:
                 self.timer.start()
             self.solveScalarization(X, P[:, newIndex], paths[newIndex,:])
-            IF TIMING:
+            if self.measureTimes:
                 self.sp_time += self.timer.stop()
             P[self.k, newIndex] -= self.current_ref # translate polytope by -Y
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -310,7 +316,7 @@ cdef class CSPDecoder(Decoder):
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (f)
             # rhs = P[S]^T P_J + 1
-            IF TIMING:
+            if self.measureTimes:
                 self.timer.start()
             for i in range(lenS):
                 space2[i] = 0
@@ -320,14 +326,14 @@ cdef class CSPDecoder(Decoder):
                 space2[k] += 1
             # solve for r (r=space1 here)
             solveLT(R.T, space2, space1, S, lenS)
-            IF TIMING:
+            if self.measureTimes:
                 self.lstsq_time += self.timer.stop() 
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # Step 1. (g): augment R
             #*R[S,newIndex] = space1
-            IF TIMING:
+            if self.measureTimes:
                 self.timer.start()
             for k in range(lenS):
                 R[S[k],newIndex] = space1[k]
@@ -335,7 +341,7 @@ cdef class CSPDecoder(Decoder):
             c = dot(space1, space1, lenS)
             b = dot(P[:, newIndex], P[:, newIndex], self.k+1)
             R[newIndex,newIndex] = sqrt(1 + b - c)
-            IF TIMING:
+            if self.measureTimes:
                 self.r_time += self.timer.stop()
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             
@@ -395,13 +401,13 @@ cdef class CSPDecoder(Decoder):
             # space3 = e
             for k in range(self.k+2):
                 space3[k] = 1
-            IF TIMING:
+            if self.measureTimes:
                 self.timer.start()
             # space1 = \bar u
             solveLT(R.T, space3, space1, S, lenS)
             # space2 = u
             solveUT(R, space1, space2, S, lenS)
-            IF TIMING:
+            if self.measureTimes:
                 self.lstsq_time += self.timer.stop()
             # space1 = v = space2 / np.sum(space2)
             # a = np.sum(space2) # remember: space3 = ones!
@@ -454,7 +460,7 @@ cdef class CSPDecoder(Decoder):
             firstZeroIndex = S[firstZeroIndexInS]
             IinS = firstZeroIndexInS
             
-            IF TIMING:
+            if self.measureTimes:
                 self.timer.start()
             if IinS < lenS-1:
                 i = S[IinS]
@@ -486,7 +492,7 @@ cdef class CSPDecoder(Decoder):
                         space1[k] = R[S[IinS+2],S[k]]
                         R[S[IinS+2],S[k]] = space3[k]
                 IinS+=1
-            IF TIMING:
+            if self.measureTimes:
                 self.r_time += self.timer.stop()
             # shrink S
             for i in range(firstZeroIndexInS, lenS-1):
@@ -575,7 +581,6 @@ cdef class CSPDecoder(Decoder):
     
     cdef void calculateSolution(self):
         cdef:
-            np.ndarray[ndim=1,dtype=np.double_t] solution = self.solution
             np.int_t[:,:] paths = self.paths
             np.int_t[:] S = self.S
             np.double_t[:] w = self.w
@@ -616,7 +621,9 @@ cdef class CSPDecoder(Decoder):
     #===========================================================================
     
     cpdef params(self):
-        return OrderedDict([ ("name", self.name), ("maxMajorCycles", self.maxMajorCycles) ])
+        return OrderedDict([("name", self.name),
+                            ("maxMajorCycles", self.maxMajorCycles),
+                            ("measureTimes", self.measureTimes)])
 
 
 class NDFInteriorDecoder(Decoder):
@@ -627,9 +634,9 @@ class NDFInteriorDecoder(Decoder):
         self.k = len(self.constraints)
         for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
             if not hasattr(t1[s1], "g_coeffs"):
-                t1[s1].g_coeffs = { INPUT: [], PARITY: [] }
+                t1[s1].g_coeffs = { INFO: [], PARITY: [] }
             t1[s1].g_coeffs[l1].append( (i, 1) )
                 
             if not hasattr(t2[s2], "g_coeffs"):
-                t2[s2].g_coeffs = { INPUT: [], PARITY: [] }
+                t2[s2].g_coeffs = { INFO: [], PARITY: [] }
             t2[s2].g_coeffs[l2].append( (i, -1) )
