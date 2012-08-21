@@ -581,13 +581,15 @@ cdef class CSPDecoder(Decoder):
     
     cdef void calculateSolution(self):
         cdef:
+            np.ndarray[ndim=1, dtype=np.double_t] solution = np.zeros(self.code.blocklength,
+                                                                      dtype=np.double)
             np.int_t[:,:] paths = self.paths
             np.int_t[:] S = self.S
             np.double_t[:] w = self.w
             int k
-        self.solution = np.zeros(self.code.blocklength, dtype=np.double)
         for k in range(self.lenS):
-            self.solution += w[S[k]]*self.code.encode(paths[S[k],:])
+            solution += w[S[k]]*self.code.encode(paths[S[k],:])
+        self.solution = solution
             
     #===========================================================================
     # cdef void updateData2(self, double delta_r):
