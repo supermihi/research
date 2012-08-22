@@ -255,6 +255,7 @@ cdef class CSPDecoder(Decoder):
             int i, j, k
             int newIndex = 1, I
             int lenS = self.lenS
+            bint badInstance = False
             np.double_t[:,:] R = self.R, \
                              P = self.P
             np.double_t[:] space1 = self.space1, \
@@ -357,7 +358,8 @@ cdef class CSPDecoder(Decoder):
             self.lenS = lenS
             if self.innerLoop() == -1:
                 X[self.k] += self.current_ref
-                return False
+                badInstance = True
+                break
             lenS = self.lenS
         
         # round out
@@ -379,7 +381,7 @@ cdef class CSPDecoder(Decoder):
         # translate  solution back
         X[self.k] += self.current_ref
         self.lenS = lenS
-        return True
+        return (not badInstance)
 
     cdef int innerLoop(self):
         """Perform the inner loop (step 2+3) of the nearest point algorithm."""
