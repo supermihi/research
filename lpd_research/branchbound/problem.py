@@ -56,7 +56,15 @@ class CplexTurboLPProblem(Problem):
             self.decoder.cplex.variables.set_upper_bounds(self.decoder.x[var], 0)
         else:
             self.decoder.cplex.variables.set_lower_bounds(self.decoder.x[var], 1)
-            
+
+    def fixVariables(self, fixes):
+        """Fix given variables, where *fixes* is a list of (var, value) pairs."""
+        # TODO
+
     def unfixVariable(self, var):
         self.decoder.cplex.variables.set_lower_bounds(self.decoder.x[var], 0)
         self.decoder.cplex.variables.set_upper_bounds(self.decoder.x[var], 1)
+
+    def unfivVariables(self, vars):
+        """Unfix given *vars*."""
+        # TODO
