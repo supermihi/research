@@ -71,6 +71,34 @@ class BBSMethod(BranchMethod):
     def addNodes(self,node0, node1):
         self.activeNodes.extend([node1, node0])
 
+#DeepSeaTroll Search Method        
+class DSTMethod(BranchMethod):
+    
+    def __init__(self, rootNode):
+        BranchMethod.__init__(self, rootNode)
+        self.activeNodes = deque([rootNode])
+        
+    def getActiveNode(self):
+        return self.activeNodes.popleft()
+        
+    def addNodes(self, node0, node1):
+        for i in range(len(self.activeNodes)):
+            if node0.lowerb > self.activeNodes[i].lowerb:
+                pass
+            else:
+                pre = self.activeNodes[0:i]
+                suc = self.activeNodes[i:len(self.activeNodes)]
+                pre = pre.append(node0)
+                self.activeNodes = pre.extend(suc)
+        for i in range(len(self.activeNodes)):
+            if node1.lowerb > self.activeNodes[i].lowerb:
+                pass
+            else:
+                pre = self.activeNodes[0:i]
+                suc = self.activeNodes[i:len(self.activeNodes)]
+                pre = pre.append(node1)
+                self.activeNodes = pre.extend(suc)
+
 
 class BranchAndBound:
     
@@ -276,3 +304,6 @@ class Node:
         
     def __str__(self):
         return "Node({}/{} with lb={},ub={})".format(self.branchVariable, self.branchValue, self.lowerb, self.upperb)
+    
+    
+#TODO: create Funktion, die neue Nodes erstelllt ahängig von der branchMethod
