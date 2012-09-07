@@ -5,7 +5,7 @@ from lpdecoding.codes.trellis cimport Trellis
 
 cdef class CSPDecoder(Decoder):
     cdef public object constraints
-    cdef public double lstsq_time, sp_time, cho_time, r_time, gensol_time
+    cdef public double lstsq_time, sp_time, cho_time, r_time, gensol_time, setcost_time
     cdef public int majorCycles, minorCycles, maxMajorCycles
     cdef object definingEncoder
     #  temporary variables
