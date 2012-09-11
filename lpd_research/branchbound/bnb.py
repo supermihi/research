@@ -7,6 +7,7 @@
 from __future__ import print_function
 import numpy as np
 from collections import deque
+import heapq
 
 class BranchMethod:
     
@@ -95,20 +96,17 @@ class BBSMethod(BranchMethod):
     
     def __init__(self, rootNode):
         BranchMethod.__init__(self, rootNode)
-        self.activeNodes = [rootNode]
+        self.activeNodes = [ (rootNode.lowerb, rootNode) ]
         
     def getActiveNode(self):
-        mini = np.inf
-        #in default the first node is returned
-        i = 0
-        for (i,x) in enumerate(self.activeNodes):
-            if mini > x.lowerb:
-                mini = x.lowerb
-                place = i
-        return self.activeNodes.pop(place)
+        try:
+            return heapq.heappop(self.activeNodes)[1]
+        except IndexError:
+            raise NodesExhausted()
     
     def addNodes(self,node0, node1):
-        self.activeNodes.extend([node1, node0])
+        heapq.heappush(self.activeNodes, (node0.lowerb, node0))
+        heapq.heappush(self.activeNodes, (node1.lowerb, node1))              
 
 #DeepSeaTroll Search Method        
 class DSTMethod(BranchMethod):
@@ -124,6 +122,9 @@ class DSTMethod(BranchMethod):
         if node0.objectiveValue < node1.objectiveValue:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
+        else:
+            self.activeNodes.append(node0)
+            self.activeNodes.append(node1)
 
 class BranchAndBound:
     
