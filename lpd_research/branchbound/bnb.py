@@ -11,14 +11,18 @@ import heapq
 
 class BranchMethod:
     
-    def __init__(self, rootNode):
+    def __init__(self, rootNode, problem):
         self.root = rootNode
+        self.problem = problem
     
-    def getActiveNode(self):
+    def getActiveNode(self, activeOld):
         """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
         pass
     
     def addNodes(self, node0, node1):
+        pass
+    
+    def createNodes(self, branchVariable, parent):
         pass
     
     def move(self, fromNode, toNode):
@@ -61,16 +65,26 @@ class BFSMethod(BranchMethod):
         BranchMethod.__init__(self, rootNode)
         self.activeNodes = deque( [rootNode] )
         
-    def getActiveNode(self):
+    def getActiveNode(self, activeOld):
         try:
-            return self.activeNodes.popleft()
+            activeNode = self.activeNodes.popleft()
         except IndexError:
             raise NodesExhausted()
+        self.move(activeOld, activeNode)
+        self.problem.solve()
+        activeNode.solution = self.problem.solution
+        activeNode.objectiveValue = self.problem.objectiveValue
+        self.move(activeNode, activeOld)
+        return activeNode
+        
     
     def addNodes(self, node0, node1):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
         
+    def createNodes(self, branchVariable, parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        parent.child1 = Node(parent, branchVariable, 1)
         
         
         
@@ -80,15 +94,25 @@ class DFSMethod(BranchMethod):
         BranchMethod.__init__(self, rootNode)
         self.activeNodes = deque ( [rootNode])
 
-    def getActiveNode(self):
+    def getActiveNode(self, activeOld):
         try:
-            return self.activeNodes.pop()
+            activeNode = self.activeNodes.pop()
         except IndexError:
             raise NodesExhausted()
+        self.move(activeOld, activeNode)
+        self.problem.solve()
+        activeNode.solution = self.problem.solution
+        activeNode.objectiveValue = self.problem.objectiveValue
+        self.move(activeNode, activeOld)
+        return activeNode
         
     def addNodes(self, node0, node1):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
+        
+    def createNodes(self, branchVariable, parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        parent.child1 = Node(parent, branchVariable, 1)
         
     
         
@@ -98,15 +122,29 @@ class BBSMethod(BranchMethod):
         BranchMethod.__init__(self, rootNode)
         self.activeNodes = [ (rootNode.lowerb, rootNode) ]
         
-    def getActiveNode(self):
+    def getActiveNode(self, activeOld):
         try:
             return heapq.heappop(self.activeNodes)[1]
         except IndexError:
             raise NodesExhausted()
-    
+         
     def addNodes(self,node0, node1):
         heapq.heappush(self.activeNodes, (node0.lowerb, node0))
-        heapq.heappush(self.activeNodes, (node1.lowerb, node1))              
+        heapq.heappush(self.activeNodes, (node1.lowerb, node1))
+        
+    def createNodes(self, branchVariable, parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        self.problem.fixVariable(branchVariable, 0)
+        self.problem.solve()
+        parent.child0.solution = self.problem.solution
+        parent.child0.objectiveValue = self.problem.objectiveValue
+        self.problem.unfixVariable(branchVariable)
+        parent.child1 = Node(parent, branchVariable, 1)
+        self.problem.fixVariable(branchVariable, 1)
+        self.problem.solve()
+        parent.child1.solution = self.problem.solution
+        parent.child1.objectiveValue = self.problem.objectiveValue
+        self.problem.unfixVariable(branchVariable)              
 
 #DeepSeaTroll Search Method        
 class DSTMethod(BranchMethod):
@@ -115,7 +153,7 @@ class DSTMethod(BranchMethod):
         BranchMethod.__init__(self, rootNode)
         self.activeNodes = deque([rootNode])
         
-    def getActiveNode(self):
+    def getActiveNode(self, activeOld):
         return self.activeNodes.pop()
         
     def addNodes(self, node0, node1):
@@ -125,6 +163,20 @@ class DSTMethod(BranchMethod):
         else:
             self.activeNodes.append(node0)
             self.activeNodes.append(node1)
+            
+    def createNodes(self, branchVariable, parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        self.problem.fixVariable(branchVariable, 0)
+        self.problem.solve()
+        parent.child0.solution = self.problem.solution
+        parent.child0.objectiveValue = self.problem.objectiveValue
+        self.problem.unfixVariable(branchVariable)
+        parent.child1 = Node(parent, branchVariable, 1)
+        self.problem.fixVariable(branchVariable, 1)
+        self.problem.solve()
+        parent.child1.solution = self.problem.solution
+        parent.child1.objectiveValue = self.problem.objectiveValue
+        self.problem.unfixVariable(branchVariable) 
 
 class BranchAndBound:
     
@@ -133,7 +185,7 @@ class BranchAndBound:
         self.eps = eps
         self.root = Node()
         #the method used to branch at Nodes
-        self.bMethod = branchMethod(self.root)
+        self.bMethod = branchMethod(self.root, self.problem)
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
@@ -151,7 +203,7 @@ class BranchAndBound:
             
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
-                activeNew = self.bMethod.getActiveNode()
+                activeNew = self.bMethod.getActiveNode(activeOld)
             except NodesExhausted:
                 break
             print("active node: {}".format(activeNew))
@@ -160,16 +212,15 @@ class BranchAndBound:
             fixCount = fixCount + fixC
             unfixCount = unfixCount + unfixC
             
-            self.problem.solve()
             
-            if self.problem.solution != None:
+            if activeNew.solution != None:
                 #find the Variable to be branched in this node
-                branchVariable = self.findVariable(self.problem.solution)
+                branchVariable = self.findVariable(activeNew.solution)
                 if branchVariable is not None:
                     print("Variable x{}={} is not integral"
-                          .format(branchVariable, self.problem.solution[branchVariable]))
+                          .format(branchVariable, activeNew.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
-                activeNew.lowerb = self.problem.objectiveValue
+                activeNew.lowerb = activeNew.objectiveValue
                 
                 
                 #hier eventuell heuristik für upperbound einfügen
@@ -177,9 +228,9 @@ class BranchAndBound:
                 
                 
                 if branchVariable is None:
-                    if self.optimalObjectiveValue > self.problem.objectiveValue:
-                        self.optimalSolution = self.problem.solution
-                        self.optimalObjectiveValue = self.problem.objectiveValue
+                    if self.optimalObjectiveValue > activeNew.objectiveValue:
+                        self.optimalSolution = activeNew.solution
+                        self.optimalObjectiveValue = activeNew.objectiveValue
                     activeNew.upperb = self.problem.objectiveValue
                 self.updBound(activeNew)
             
@@ -192,8 +243,9 @@ class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    activeNew.child0 = Node(activeNew, branchVariable, 0)
-                    activeNew.child1 = Node(activeNew, branchVariable, 1)
+                    self.bMethod.createNodes(branchVariable, activeNew)
+                    #activeNew.child0 = Node(activeNew, branchVariable, 0)
+                    #activeNew.child1 = Node(activeNew, branchVariable, 1)
                     self.bMethod.addNodes(activeNew.child0,activeNew.child1)
                     branchCount = branchCount + 1
             else:
