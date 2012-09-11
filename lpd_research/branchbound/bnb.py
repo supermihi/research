@@ -79,26 +79,12 @@ class DSTMethod(BranchMethod):
         self.activeNodes = deque([rootNode])
         
     def getActiveNode(self):
-        return self.activeNodes.popleft()
+        return self.activeNodes.pop()
         
     def addNodes(self, node0, node1):
-        for i in range(len(self.activeNodes)):
-            if node0.lowerb > self.activeNodes[i].lowerb:
-                pass
-            else:
-                pre = self.activeNodes[0:i]
-                suc = self.activeNodes[i:len(self.activeNodes)]
-                pre = pre.append(node0)
-                self.activeNodes = pre.extend(suc)
-        for i in range(len(self.activeNodes)):
-            if node1.lowerb > self.activeNodes[i].lowerb:
-                pass
-            else:
-                pre = self.activeNodes[0:i]
-                suc = self.activeNodes[i:len(self.activeNodes)]
-                pre = pre.append(node1)
-                self.activeNodes = pre.extend(suc)
-
+        if node0.objectiveValue < node1.objectiveValue:
+            self.activeNodes.append(node1)
+            self.activeNodes.append(node0)
 
 class BranchAndBound:
     
