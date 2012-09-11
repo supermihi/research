@@ -198,7 +198,7 @@ class BranchAndBound:
         branchCount = 0
         fixCount = 0
         unfixCount = 0
-        #moveCount = 0
+        moveCount = 0
         while True:
             
             #select one of the active nodes, move there and (solve the corresponding problem)
@@ -211,6 +211,7 @@ class BranchAndBound:
             (fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
             fixCount = fixCount + fixC
             unfixCount = unfixCount + unfixC
+            moveCount = moveCount + 1
             
             
             if activeNew.solution != None:
@@ -257,6 +258,9 @@ class BranchAndBound:
         print(self.optimalSolution)
         print(self.optimalObjectiveValue)
         print("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
+        print("MoveCount: {move}".format(move=moveCount))
+        print("Bei DSTMethod und BBSMethod sind fixCount und UnfixCount je um 2 mal den BranchCount erhöht.")
+        print("Bei DFSMethod und BFSMethod ist der moveCount verdreifacht.")
         return self.optimalSolution
              
             
