@@ -19,6 +19,40 @@ class BranchMethod:
     
     def addNodes(self, node0, node1):
         pass
+    
+    def move(self, fromNode, toNode):
+        """Moves problem from fromNode to toNode.
+        """
+        unfixCount = 0
+        fixCount = 0
+        fix = []
+        print('moving from {} to {}'.format(fromNode, toNode))
+        while fromNode.depth > toNode.depth:
+            self.problem.unfixVariable(fromNode.branchVariable)
+            unfixCount = unfixCount + 1
+            print('unfix variable {}'.format(fromNode.branchVariable))
+            fromNode = fromNode.parent
+        
+        while toNode.depth > fromNode.depth:
+            fix.append( (toNode.branchVariable, toNode.branchValue) )
+            fixCount = fixCount + 1
+            toNode = toNode.parent
+            
+        while toNode is not fromNode:
+            print('unfix variable* {}'.format(fromNode.branchVariable))
+            self.problem.unfixVariable(fromNode.branchVariable)
+            unfixCount = unfixCount +1
+            fix.append( (toNode.branchVariable, toNode.branchValue) )
+            fromNode = fromNode.parent
+            toNode = toNode.parent
+        print("Fix list: {}".format(fix))
+        for var, value in fix:
+            self.problem.fixVariable(var, value)
+            fixCount = fixCount + 1
+        return (fixCount, unfixCount)
+    
+    
+    
 
 class BFSMethod(BranchMethod):
     
@@ -36,6 +70,9 @@ class BFSMethod(BranchMethod):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
         
+        
+        
+        
 class DFSMethod(BranchMethod):
     
     def __init__(self, rootNode):
@@ -51,6 +88,8 @@ class DFSMethod(BranchMethod):
     def addNodes(self, node0, node1):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
+        
+    
         
 class BBSMethod(BranchMethod):
     
@@ -116,7 +155,7 @@ class BranchAndBound:
                 break
             print("active node: {}".format(activeNew))
             
-            (fixC, unfixC) = self.move(activeOld, activeNew)
+            (fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
             fixCount = fixCount + fixC
             unfixCount = unfixCount + unfixC
             
@@ -169,37 +208,7 @@ class BranchAndBound:
              
             
     
-    def move(self, fromNode, toNode):
-        """Moves problem from fromNode to toNode.
-        """
-        unfixCount = 0
-        fixCount = 0
-        fix = []
-        print('moving from {} to {}'.format(fromNode, toNode))
-        while fromNode.depth > toNode.depth:
-            self.problem.unfixVariable(fromNode.branchVariable)
-            unfixCount = unfixCount + 1
-            print('unfix variable {}'.format(fromNode.branchVariable))
-            fromNode = fromNode.parent
-        
-        while toNode.depth > fromNode.depth:
-            fix.append( (toNode.branchVariable, toNode.branchValue) )
-            fixCount = fixCount + 1
-            toNode = toNode.parent
-            
-        while toNode is not fromNode:
-            print('unfix variable* {}'.format(fromNode.branchVariable))
-            self.problem.unfixVariable(fromNode.branchVariable)
-            unfixCount = unfixCount +1
-            fix.append( (toNode.branchVariable, toNode.branchValue) )
-            fromNode = fromNode.parent
-            toNode = toNode.parent
-        print("Fix list: {}".format(fix))
-        for var, value in fix:
-            self.problem.fixVariable(var, value)
-            fixCount = fixCount + 1
-        return (fixCount, unfixCount)
-    
+
     def updBound(self, node):
         """Updates lower and upper bounds for node and all parent nodes, if possible.
         """
