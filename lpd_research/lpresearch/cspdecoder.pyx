@@ -129,10 +129,14 @@ cdef class CSPDecoder(Decoder):
             np.double_t[:] direction = self.direction, X = self.X
             np.int_t[:,:] paths = self.paths           
         
-        self.code.setCost(self.llrVector)
+        
         self.majorCycles = self.minorCycles = 0
         if self.measureTimes:
-            self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.gensol_time = 0
+            self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.gensol_time = self.setcost_time = 0
+            self.timer.start()
+        self.code.setCost(self.llrVector)
+        if self.measureTimes:
+            self.setcost_time += self.timer.stop()
         
         #  find path with minimum cost
         for k in range(self.k):
@@ -196,12 +200,13 @@ cdef class CSPDecoder(Decoder):
             if "sp_time" not in self.stats:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = 0
                 self.stats["cho_time"] = self.stats["r_time"] = 0
-                self.stats["gensol_time"] = 0
+                self.stats["gensol_time"] = self.stats["setcost_time"] = 0
             self.stats["lstsq_time"] += self.lstsq_time
             self.stats["sp_time"] += self.sp_time
             self.stats["cho_time"] += self.cho_time
             self.stats["r_time"] += self.r_time
             self.stats["gensol_time"] += self.gensol_time
+            self.stats["setcost_time"] += self.setcost_time
         
         if self.lenS == 1:
             try:
@@ -590,7 +595,7 @@ cdef class CSPDecoder(Decoder):
             np.double_t[:] w = self.w
             int k
         for k in range(self.lenS):
-            solution += w[S[k]]*self.code.encode(paths[S[k],:])
+            solution += w[S[k]]*self.code.encode(np.asarray(paths[S[k],:], dtype=np.int))
         self.solution = solution
             
     #===========================================================================
