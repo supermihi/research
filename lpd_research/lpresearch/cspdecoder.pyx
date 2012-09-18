@@ -300,9 +300,9 @@ cdef class CSPDecoder(Decoder):
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
             # stopping criteria: ||X|| small or increased
             normx = norm(X, self.k+1)
-            if normx < EPS:
+            if normx < 1e-8:
                 break
-            if abs(normx-oldnormx) < EPS and normx < 1e-7:
+            if abs(normx-oldnormx) < EPS and normx < 1e-6:
                 #print('small change {0}'.format(normx))
                 break
             if normx >= oldnormx:
