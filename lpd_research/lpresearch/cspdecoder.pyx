@@ -23,7 +23,7 @@ from lpdecoding.algorithms.path cimport shortestPathScalarization
 from lpdecoding.codes.trellis import INFO, PARITY
 from lpdecoding.utils cimport StopWatch
 
-DEF EPS = 1e-9
+DEF EPS = 1e-10
 
 cdef inline double norm(np.double_t[:] a, int size):
     """computes the L2-norm of a[:size]"""
@@ -54,6 +54,22 @@ cdef void solveLT(np.double_t[:,:] a,
         x[i] =  tmp / a[S[i],S[i]]
         #x[i] = (b[i] - np.dot(x[:i], a[i,:i])) / a[i,i]
 
+cdef void solveLTTrans(np.double_t[:,:] a,
+                  np.double_t[:] b,
+                  np.double_t[:] x,
+                  np.int_t[:] S,
+                  int lenS):
+    """Ensure that x[:lenS] solves numpy.dot(a[S[:lenS][:,S[:lenS], x[:lenS]) = b[:lenS] if a is a lower triangular matrix."""
+    cdef:
+        int i,j
+        double tmp         
+    for i in xrange(lenS):
+        tmp = b[i]
+        for j in xrange(i):
+            tmp -= x[j]*a[S[j],S[i]]
+        x[i] =  tmp / a[S[i],S[i]]
+        #x[i] = (b[i] - np.dot(x[:i], a[i,:i])) / a[i,i]
+        
 cdef void solveUT(np.double_t[:,:] a,
                   np.double_t[:] b,
                   np.double_t[:] x,
@@ -129,12 +145,11 @@ cdef class CSPDecoder(Decoder):
             np.double_t[:] direction = self.direction, X = self.X
             np.int_t[:,:] paths = self.paths           
         
-        
         self.majorCycles = self.minorCycles = 0
         if self.measureTimes:
             self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.gensol_time = self.setcost_time = 0
             self.timer.start()
-        self.code.setCost(self.llrVector)
+        self.code.setCost(.1*self.llrVector)
         if self.measureTimes:
             self.setcost_time += self.timer.stop()
         
@@ -195,7 +210,7 @@ cdef class CSPDecoder(Decoder):
             self.calculateSolution()
             if self.measureTimes:
                 self.gensol_time += self.timer.stop()
-        
+        self.objectiveValue *= 10
         if self.measureTimes:
             if "sp_time" not in self.stats:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = 0
@@ -287,7 +302,7 @@ cdef class CSPDecoder(Decoder):
             normx = norm(X, self.k+1)
             if normx < EPS:
                 break
-            if abs(normx-oldnormx) < 1e-10 and normx < EPS:
+            if abs(normx-oldnormx) < EPS and normx < 1e-7:
                 #print('small change {0}'.format(normx))
                 break
             if normx >= oldnormx:
@@ -331,7 +346,7 @@ cdef class CSPDecoder(Decoder):
             for k in range(lenS):
                 space2[k] += 1
             # solve for r (r=space1 here)
-            solveLT(R.T, space2, space1, S, lenS)
+            solveLTTrans(R, space2, space1, S, lenS)
             if self.measureTimes:
                 self.lstsq_time += self.timer.stop() 
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -371,8 +386,8 @@ cdef class CSPDecoder(Decoder):
         if lenS > 1:
             j=-1
             for k in range(lenS):
-                if w[S[k]] > 1-EPS:
-                    j=k
+                if w[S[k]] > 1-1e-8:
+                    j=S[k]
                     w[S[k]] = 1
                     break
             if j != -1:
@@ -411,7 +426,7 @@ cdef class CSPDecoder(Decoder):
             if self.measureTimes:
                 self.timer.start()
             # space1 = \bar u
-            solveLT(R.T, space3, space1, S, lenS)
+            solveLTTrans(R, space3, space1, S, lenS)
             # space2 = u
             solveUT(R, space1, space2, S, lenS)
             if self.measureTimes:
@@ -419,10 +434,12 @@ cdef class CSPDecoder(Decoder):
             # space1 = v = space2 / np.sum(space2)
             # a = np.sum(space2) # remember: space3 = ones!
             a= dot(space2, space3, lenS)
+            if np.isnan(a):
+                print('baah')
+                return -1
             for k in range(lenS):
                 space1[k] = space2[k]/a
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
             # Step 2 (b): if (v=space1) > EPS:
             cond = True
             for k in range(lenS):
@@ -434,7 +451,6 @@ cdef class CSPDecoder(Decoder):
                 for k in range(lenS):
                     w[S[k]] = space1[k]
                 break
-            
             self.minorCycles += 1
             #*POS = np.flatnonzero(space1 <= EPS) # 3 (a) corrected                    
             #*theta = min(1, np.max(space1[POS]/(space1[POS] - w[S][POS]))) # 3 (b) corrected
@@ -463,6 +479,7 @@ cdef class CSPDecoder(Decoder):
                         firstZeroIndexInS = k
             if firstZeroIndexInS == -1:
                 # numerically desastrous case
+                print('omg')
                 return -1
             firstZeroIndex = S[firstZeroIndexInS]
             IinS = firstZeroIndexInS
@@ -477,7 +494,6 @@ cdef class CSPDecoder(Decoder):
                 for k in range(lenS):
                     space1[k] = R[j,S[k]]
                     R[j,S[k]] = R[i,S[k]] 
-                
             while IinS < lenS-1:
                 I = S[IinS]
                 Ip1 = S[IinS+1]
@@ -562,7 +578,6 @@ cdef class CSPDecoder(Decoder):
                              R = self.R, \
                              RHS = self.RHS
             np.int_t[:] S = self.S
-            
         for k in range(self.lenS):
             P[self.k, S[k]] += delta_r
         # compute RHS = ee^T + Q^TQ
@@ -597,37 +612,7 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.lenS):
             solution += w[S[k]]*self.code.encode(np.asarray(paths[S[k],:], dtype=np.int))
         self.solution = solution
-            
-    #===========================================================================
-    # cdef void updateData2(self, double delta_r):
-    #    """Test method; didn't work out."""
-    #    cdef:
-    #        int i, j, k, min_index
-    #        double a, min_value=9e20
-    #        int lenS = self.lenS
-    #        np.double_t[:,:] P = self.P, \
-    #                         R = self.R
-    #        np.int_t[:] S = self.S, Sfree = self.Sfree
-    #        np.double_t[:] w = self.w
-    #        
-    #    for k in range(self.lenS):
-    #        P[self.k, S[k]] += delta_r
-    #        a = 0
-    #        for i in range(self.k+1):
-    #            a += np.square(P[i, S[k]])
-    #        if a < min_value:
-    #            min_value = a
-    #            min_index = k
-    #    
-    #    R[min_index,min_index] = sqrt(1+a)
-    #    # initialize S, w, and R
-    #    self.lenS = 1
-    #    S[0] = min_index
-    #    Sfree[min_index] = 0
-    #    for k in range(self.k+2):
-    #        Sfree[k] = (k != min_index)
-    #    w[min_index] = 1
-    #===========================================================================
+        
     
     cpdef params(self):
         return OrderedDict([("name", self.name),
