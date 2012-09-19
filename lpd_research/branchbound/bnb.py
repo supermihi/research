@@ -4,6 +4,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+
 from __future__ import print_function
 import numpy as np
 from collections import deque
@@ -61,8 +62,8 @@ class BranchMethod:
 
 class BFSMethod(BranchMethod):
     
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque( [rootNode] )
         
     def getActiveNode(self, activeOld):
@@ -90,8 +91,8 @@ class BFSMethod(BranchMethod):
         
 class DFSMethod(BranchMethod):
     
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque ( [rootNode])
 
     def getActiveNode(self, activeOld):
@@ -118,9 +119,13 @@ class DFSMethod(BranchMethod):
         
 class BBSMethod(BranchMethod):
     
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
+        self.problem.solve()
+        self.root.solution = self.problem.solution
+        self.root.objectiveValue = self.root.lowerb = self.problem.objectiveValue
         self.activeNodes = [ (rootNode.lowerb, rootNode) ]
+        
         
     def getActiveNode(self, activeOld):
         try:
@@ -149,12 +154,18 @@ class BBSMethod(BranchMethod):
 #DeepSeaTroll Search Method        
 class DSTMethod(BranchMethod):
     
-    def __init__(self, rootNode):
-        BranchMethod.__init__(self, rootNode)
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque([rootNode])
+        self.problem.solve()
+        self.root.solution = self.problem.solution
+        self.root.objectiveValue = self.problem.objectiveValue
         
     def getActiveNode(self, activeOld):
-        return self.activeNodes.pop()
+        try:
+            return self.activeNodes.pop()
+        except IndexError:
+            raise NodesExhausted()
         
     def addNodes(self, node0, node1):
         if node0.objectiveValue < node1.objectiveValue:
@@ -200,7 +211,7 @@ class BranchAndBound:
         unfixCount = 0
         moveCount = 0
         while True:
-            
+            print('starting main loop')
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
                 activeNew = self.bMethod.getActiveNode(activeOld)
@@ -209,12 +220,11 @@ class BranchAndBound:
             print("active node: {}".format(activeNew))
             
             (fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
-            fixCount = fixCount + fixC
-            unfixCount = unfixCount + unfixC
-            moveCount = moveCount + 1
+            fixCount += fixC
+            unfixCount += unfixC
+            moveCount += 1
             
-            
-            if activeNew.solution != None:
+            if activeNew.solution is not None:
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(activeNew.solution)
                 if branchVariable is not None:
@@ -229,6 +239,7 @@ class BranchAndBound:
                 
                 
                 if branchVariable is None:
+                    # have a feasible solution
                     if self.optimalObjectiveValue > activeNew.objectiveValue:
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
@@ -248,12 +259,15 @@ class BranchAndBound:
                     #activeNew.child0 = Node(activeNew, branchVariable, 0)
                     #activeNew.child1 = Node(activeNew, branchVariable, 1)
                     self.bMethod.addNodes(activeNew.child0,activeNew.child1)
-                    branchCount = branchCount + 1
+                    branchCount += 1
             else:
                 activeNew.lowerb = np.inf
                 self.updBound(activeNew)
             activeOld = activeNew
-        
+        self.moveCount = moveCount
+        self.fixCount = fixCount
+        self.unfixCount = unfixCount
+        self.branchCount = branchCount
         print("******* optimal solution found *******")
         print(self.optimalSolution)
         print(self.optimalObjectiveValue)

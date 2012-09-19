@@ -37,29 +37,14 @@ cdef inline double dot(np.double_t[:] a, np.double_t[:] b, int size):
     for i in range(size):
         tmp += a[i]*b[i]
     return tmp
- 
-cdef void solveLT(np.double_t[:,:] a,
-                  np.double_t[:] b,
-                  np.double_t[:] x,
-                  np.int_t[:] S,
-                  int lenS):
-    """Ensure that x[:lenS] solves numpy.dot(a[S[:lenS][:,S[:lenS], x[:lenS]) = b[:lenS] if a is a lower triangular matrix."""
-    cdef:
-        int i,j
-        double tmp         
-    for i in xrange(lenS):
-        tmp = b[i]
-        for j in xrange(i):
-            tmp -= x[j]*a[S[i],S[j]]
-        x[i] =  tmp / a[S[i],S[i]]
-        #x[i] = (b[i] - np.dot(x[:i], a[i,:i])) / a[i,i]
 
 cdef void solveLTTrans(np.double_t[:,:] a,
                   np.double_t[:] b,
                   np.double_t[:] x,
                   np.int_t[:] S,
                   int lenS):
-    """Ensure that x[:lenS] solves numpy.dot(a[S[:lenS][:,S[:lenS], x[:lenS]) = b[:lenS] if a is a lower triangular matrix."""
+    """Ensure that x[:lenS] solves numpy.dot(a[S[:lenS][:,S[:lenS].T, x[:lenS]) = b[:lenS]
+    if a is a lower triangular matrix."""
     cdef:
         int i,j
         double tmp         

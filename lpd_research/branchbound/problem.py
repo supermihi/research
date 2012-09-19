@@ -39,8 +39,7 @@ class CplexTurboLPProblem(Problem):
         
     def setObjectiveFunction(self, c):
         self.decoder.llrVector = c
-        for i in range(len(self.decoder.x)):
-            self.unfixVariable(i)
+        self.unfixVariables(self.decoder.x)
         
     def solve(self):
         self.decoder.solve()
@@ -59,12 +58,18 @@ class CplexTurboLPProblem(Problem):
 
     def fixVariables(self, fixes):
         """Fix given variables, where *fixes* is a list of (var, value) pairs."""
-        # TODO
+        zeroFixes = [ tup for tup in fixes if tup[1] == 0 ]
+        oneFixes = [ tup for tup in fixes if tup[1] == 1 ]
+        if len(zeroFixes) > 0:
+            self.decoder.cplex.variables.set_upper_bounds(zeroFixes)
+        if len(oneFixes) > 0:
+            self.decoder.cplex.variables.set_lower_bounds(oneFixes)
 
     def unfixVariable(self, var):
         self.decoder.cplex.variables.set_lower_bounds(self.decoder.x[var], 0)
         self.decoder.cplex.variables.set_upper_bounds(self.decoder.x[var], 1)
 
-    def unfivVariables(self, vars):
+    def unfixVariables(self, vars):
         """Unfix given *vars*."""
-        # TODO
+        self.decoder.cplex.variables.set_lower_bounds([ (var, 0) for var in vars])
+        self.decoder.cplex.variables.set_upper_bounds([ (var, 1) for var in vars])
