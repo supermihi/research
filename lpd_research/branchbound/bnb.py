@@ -71,12 +71,12 @@ class BFSMethod(BranchMethod):
             activeNode = self.activeNodes.popleft()
         except IndexError:
             raise NodesExhausted()
-        self.move(activeOld, activeNode)
+        (fixC, unfixC) = self.move(activeOld, activeNode)
         self.problem.solve()
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        self.move(activeNode, activeOld)
-        return activeNode
+        #self.move(activeNode, activeOld)
+        return (activeNode, fixC, unfixC)
         
     
     def addNodes(self, node0, node1):
@@ -100,12 +100,12 @@ class DFSMethod(BranchMethod):
             activeNode = self.activeNodes.pop()
         except IndexError:
             raise NodesExhausted()
-        self.move(activeOld, activeNode)
+        (fixC, unfixC) = self.move(activeOld, activeNode)
         self.problem.solve()
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        self.move(activeNode, activeOld)
-        return activeNode
+        #self.move(activeNode, activeOld)
+        return (activeNode, fixC, unfixC)
         
     def addNodes(self, node0, node1):
         self.activeNodes.append(node1)
@@ -129,9 +129,11 @@ class BBSMethod(BranchMethod):
         
     def getActiveNode(self, activeOld):
         try:
-            return heapq.heappop(self.activeNodes)[1]
+            activeNode = heapq.heappop(self.activeNodes)[1]
         except IndexError:
             raise NodesExhausted()
+        (fixC, unfixC) = self.move(activeOld, activeNode)
+        return (activeNode, fixC, unfixC)
          
     def addNodes(self,node0, node1):
         heapq.heappush(self.activeNodes, (node0.lowerb, node0))
@@ -163,9 +165,11 @@ class DSTMethod(BranchMethod):
         
     def getActiveNode(self, activeOld):
         try:
-            return self.activeNodes.pop()
+            activeNode = self.activeNodes.pop()
         except IndexError:
             raise NodesExhausted()
+        (fixC, unfixC) = self.move(activeOld, activeNode)
+        return (activeNode, fixC, unfixC)
         
     def addNodes(self, node0, node1):
         if node0.objectiveValue < node1.objectiveValue:
@@ -214,12 +218,12 @@ class BranchAndBound:
             print('starting main loop')
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
-                activeNew = self.bMethod.getActiveNode(activeOld)
+                (activeNew, fixC, unfixC) = self.bMethod.getActiveNode(activeOld)
             except NodesExhausted:
                 break
             print("active node: {}".format(activeNew))
             
-            (fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
+            #(fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
             fixCount += fixC
             unfixCount += unfixC
             moveCount += 1
@@ -264,6 +268,12 @@ class BranchAndBound:
                 activeNew.lowerb = np.inf
                 self.updBound(activeNew)
             activeOld = activeNew
+        
+        #match fix and unfix count to the selected branchMethod
+        if self.bMethod == BBSMethod or self.bMethod == DSTMethod:
+            fixCount += 2*branchCount
+            unfixCount += 2*branchCount
+            
         self.moveCount = moveCount
         self.fixCount = fixCount
         self.unfixCount = unfixCount
@@ -273,8 +283,8 @@ class BranchAndBound:
         print(self.optimalObjectiveValue)
         print("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
         print("MoveCount: {move}".format(move=moveCount))
-        print("Bei DSTMethod und BBSMethod sind fixCount und UnfixCount je um 2 mal den BranchCount erhöht.")
-        print("Bei DFSMethod und BFSMethod ist der moveCount verdreifacht.")
+        #print("Bei DSTMethod und BBSMethod sind fixCount und UnfixCount je um 2 mal den BranchCount erhöht.")
+        #print("Bei DFSMethod und BFSMethod ist der moveCount verdreifacht.")
         return self.optimalSolution
              
             
