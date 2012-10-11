@@ -30,6 +30,11 @@ class Problem(object):
         """Set the objective function to vector *c*, a numpy array."""
         pass
 
+class CSPTurboLPProblem(Problem):
+    def __init__(self, code):
+        from lpresearch import cspdecoder
+        Problem.__init__(self)
+        self.decoder = cspdecoder.CSPDecoder(code)
 
 class CplexTurboLPProblem(Problem):
     

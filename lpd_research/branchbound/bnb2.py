@@ -7,7 +7,7 @@
 
 from __future__ import print_function
 import numpy as np
-from collections import deque, set
+from collections import deque
 import heapq
 
 class BranchMethod:

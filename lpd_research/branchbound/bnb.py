@@ -32,11 +32,11 @@ class BranchMethod:
         unfixCount = 0
         fixCount = 0
         fix = []
-        print('moving from {} to {}'.format(fromNode, toNode))
+        #print('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
             self.problem.unfixVariable(fromNode.branchVariable)
             unfixCount = unfixCount + 1
-            print('unfix variable {}'.format(fromNode.branchVariable))
+            #print('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
@@ -45,13 +45,13 @@ class BranchMethod:
             toNode = toNode.parent
             
         while toNode is not fromNode:
-            print('unfix variable* {}'.format(fromNode.branchVariable))
+            #print('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
             unfixCount = unfixCount +1
             fix.append( (toNode.branchVariable, toNode.branchValue) )
             fromNode = fromNode.parent
             toNode = toNode.parent
-        print("Fix list: {}".format(fix))
+        #print("Fix list: {}".format(fix))
         for var, value in fix:
             self.problem.fixVariable(var, value)
             fixCount = fixCount + 1
@@ -215,13 +215,15 @@ class BranchAndBound:
         unfixCount = 0
         moveCount = 0
         while True:
-            print('starting main loop')
+            print('main loop iteration {}'.format(branchCount))
+            print('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
+            print('#active nodes: {}\n'.format(len(self.bMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
                 (activeNew, fixC, unfixC) = self.bMethod.getActiveNode(activeOld)
             except NodesExhausted:
                 break
-            print("active node: {}".format(activeNew))
+            #print("active node: {}".format(activeNew))
             
             #(fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
             fixCount += fixC
@@ -231,9 +233,6 @@ class BranchAndBound:
             if activeNew.solution is not None:
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(activeNew.solution)
-                if branchVariable is not None:
-                    print("Variable x{}={} is not integral"
-                          .format(branchVariable, activeNew.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
                 
@@ -270,7 +269,7 @@ class BranchAndBound:
             activeOld = activeNew
         
         #match fix and unfix count to the selected branchMethod
-        if self.bMethod == BBSMethod or self.bMethod == DSTMethod:
+        if isinstance(self.bMethod, BBSMethod) or isinstance(self.bMethod, DSTMethod):
             fixCount += 2*branchCount
             unfixCount += 2*branchCount
             
