@@ -31,12 +31,15 @@ class BranchMethod:
         """
         #fix = []
         print('moving from {} to {}'.format(fromNode, toNode))
-        fix = toNode.copy() - fromNode.copy()
-        unfix = fromNode.copy() - toNode.copy()
-        self.problem.fixVariables(fix)
-        self.problem.unfixVariables(unfix)
-        return (len(fix), len(unfix))
+        #fix = toNode.copy() - fromNode.copy()
+        #unfix = fromNode.copy() - toNode.copy()
+        #self.problem.unfixVariables(unfix)
+        #self.problem.fixVariables(fix)
+        self.problem.unfixVariables(fromNode.branchVarVal)
+        self.problem.fixVariables(toNode.branchVarVal)
         
+        #return (len(fix), len(unfix))
+        return (1, 1)
         
         
         
@@ -375,8 +378,8 @@ class Node2:
         #nec to use BestBound
         self.solution = None
         self.objectiveValue = None
-        
-        self.branchVarVal = branchVarVal.copy().add((branchVariable, branchValue))
+        self.branchVarVal = branchVarVal.append(branchVariable, branchValue)
+        #self.branchVarVal = branchVarVal.copy().add((branchVariable, branchValue))
         if parent is None:
             self.depth = 0
         else:
