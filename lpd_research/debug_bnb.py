@@ -17,16 +17,24 @@ from lpdecoding.codes.convolutional import LTEEncoder
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
 
 from lpdecoding.channels import SignalGenerator, AWGNC
+import logging
+import random
  
 if __name__ == "__main__":
     size = int(sys.argv[1])
+    logging.basicConfig(level=logging.INFO)
+    random.seed(192837)
     interleaver = Interleaver.random(size)
     code = StandardTurboCode(LTEEncoder(), interleaver, "smallTestCode")
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     problem = problem.CplexTurboLPProblem(code)
     methods = bnb.BFSMethod, bnb.DFSMethod, bnb.DSTMethod, bnb.BBSMethod
-    np.random.seed(223948)
+    seed = np.random.randint(9999999)
+    seed = 3812070
+    np.random.seed(seed)
+    
     llr = np.random.standard_normal(code.blocklength)
+    print(llr)
     branchCounts = {}
     moveCounts = {}
     fixCounts = {}
@@ -36,15 +44,17 @@ if __name__ == "__main__":
         solution = algo.run()
         checkDecoder.decode(llr)
         if np.allclose(checkDecoder.solution, solution):
-            print("okay")
+            print("method {} okay".format(method))
+            print("\toptimal value={}".format(algo.optimalObjectiveValue))
         else:
-            print("wrong solution:")
+            print("method {} wrong solution:".format(method))
             print("\tBNB optimum={}".format(algo.optimalObjectiveValue))
             print("\tCPX optimum={}".format(checkDecoder.objectiveValue))
+            print('\tseed= {}'.format(seed))
             raw_input()
-        print("branch count={}".format(algo.branchCount))
-        print("move count={}".format(algo.moveCount))
-        print("fix count={}".format(algo.fixCount))
+        print("\tbranch count={}".format(algo.branchCount))
+        print("\tmove count={}".format(algo.moveCount))
+        print("\tfix count={}".format(algo.fixCount))
         fixCounts[method.__name__] = algo.fixCount
         branchCounts[method.__name__] = algo.branchCount
         moveCounts[method.__name__] = algo.moveCount
