@@ -393,4 +393,6 @@ class Node2:
         return "Node({}/{} with lb={},ub={})".format(self.branchVariable, self.branchValue, self.lowerb, self.upperb)
     
     
-#TODO: Node2class with (BranchVariabl, BranchValue) - List
+#TODO: Node 2 auf sets umstellen
+#TODO: BestBound reparieren
+#TODO: find Variable überdenken - ändern sich die counts?
