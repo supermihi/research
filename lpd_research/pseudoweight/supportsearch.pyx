@@ -6,9 +6,9 @@
 # published by the Free Software Foundation
 from __future__ import division
 from lpdecoding.core cimport Decoder, Code
-from lpdecoding.algorithms.pseudoweight import *
 from lpdecoding.utils cimport StopWatch
-import logging
+import logging, datetime, itertools
+import lpdecoding.algorithms.pseudoweight as pwt
 import numpy as np
 cimport numpy as np
 ctypedef np.double_t DTYPE_t
@@ -49,21 +49,21 @@ def findLowSupportPCWs(identifier, Decoder decoder, Code code, int runs=10):
             rounded = np.around(beta_k_plus_one, 8)
             if np.count_nonzero(rounded) < bestSupport and len(np.unique(rounded))>2:
                 bestSupport = np.count_nonzero(rounded)
-                bestSupportPCW = rounded
+                bestSupportPCW = decoder.rescaledPseudoCodeword()
             if new_pw > pw - 1e-8:
                 break
             pw = new_pw
             beta_k = beta_k_plus_one
         if new_pw < bestPW:
             bestPW = new_pw
-            bestPCW = beta_k
+            bestPCW = decoder.rescaledPseudoCodeword()
             logger.debug('[iteration {0}] best: {1} after {2} steps'.format(iteration, pw, i))
         else:
             logger.debug('[iteration {0}] {1} not better'.format(iteration, pw))
     logger.info('average convergence steps: {0}'.format(steps / runs))
     options = dict(runs=runs)
     stats = dict(totalLPs=steps)
-    result = PseudoweightComputation(identifier, "low support search",
+    result = pwt.PseudoweightComputation(identifier, "low support search",
                                    code, decoder, bestSupport, bestSupportPCW,
                                    options, timer.stop(), stats,
                                    start_time, datetime.datetime.utcnow())

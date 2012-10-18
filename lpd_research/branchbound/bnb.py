@@ -9,6 +9,7 @@ from __future__ import print_function
 import numpy as np
 from collections import deque
 import heapq
+import logging
 
 class BranchMethod:
     
@@ -32,11 +33,11 @@ class BranchMethod:
         unfixCount = 0
         fixCount = 0
         fix = []
-        print('moving from {} to {}'.format(fromNode, toNode))
+        #logging.debug('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
             self.problem.unfixVariable(fromNode.branchVariable)
             unfixCount = unfixCount + 1
-            print('unfix variable {}'.format(fromNode.branchVariable))
+            #logging.debug('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
@@ -45,13 +46,13 @@ class BranchMethod:
             toNode = toNode.parent
             
         while toNode is not fromNode:
-            print('unfix variable* {}'.format(fromNode.branchVariable))
+            #logging.debug('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
             unfixCount = unfixCount +1
             fix.append( (toNode.branchVariable, toNode.branchValue) )
             fromNode = fromNode.parent
             toNode = toNode.parent
-        print("Fix list: {}".format(fix))
+        #logging.debug("Fix list: {}".format(fix))
         for var, value in fix:
             self.problem.fixVariable(var, value)
             fixCount = fixCount + 1
@@ -215,13 +216,15 @@ class BranchAndBound:
         unfixCount = 0
         moveCount = 0
         while True:
-            print('starting main loop')
+            logging.debug('main loop iteration {}'.format(branchCount))
+            logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
+            logging.debug('#active nodes: {}\n'.format(len(self.bMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
                 (activeNew, fixC, unfixC) = self.bMethod.getActiveNode(activeOld)
             except NodesExhausted:
                 break
-            print("active node: {}".format(activeNew))
+            #logging.debug("active node: {}".format(activeNew))
             
             #(fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
             fixCount += fixC
@@ -231,9 +234,6 @@ class BranchAndBound:
             if activeNew.solution is not None:
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(activeNew.solution)
-                if branchVariable is not None:
-                    print("Variable x{}={} is not integral"
-                          .format(branchVariable, activeNew.solution[branchVariable]))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
                 
@@ -270,7 +270,7 @@ class BranchAndBound:
             activeOld = activeNew
         
         #match fix and unfix count to the selected branchMethod
-        if self.bMethod == BBSMethod or self.bMethod == DSTMethod:
+        if isinstance(self.bMethod, BBSMethod) or isinstance(self.bMethod, DSTMethod):
             fixCount += 2*branchCount
             unfixCount += 2*branchCount
             
@@ -278,13 +278,13 @@ class BranchAndBound:
         self.fixCount = fixCount
         self.unfixCount = unfixCount
         self.branchCount = branchCount
-        print("******* optimal solution found *******")
-        print(self.optimalSolution)
-        print(self.optimalObjectiveValue)
-        print("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
-        print("MoveCount: {move}".format(move=moveCount))
-        #print("Bei DSTMethod und BBSMethod sind fixCount und UnfixCount je um 2 mal den BranchCount erhöht.")
-        #print("Bei DFSMethod und BFSMethod ist der moveCount verdreifacht.")
+        logging.debug("******* optimal solution found *******")
+        logging.debug(self.optimalSolution)
+        logging.debug(self.optimalObjectiveValue)
+        logging.debug("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
+        logging.debug("MoveCount: {move}".format(move=moveCount))
+        #logging.debug("Bei DSTMethod und BBSMethod sind fixCount und UnfixCount je um 2 mal den BranchCount erhöht.")
+        #logging.debug("Bei DFSMethod und BFSMethod ist der moveCount verdreifacht.")
         return self.optimalSolution
              
             
