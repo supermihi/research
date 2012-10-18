@@ -29,8 +29,8 @@ if __name__ == "__main__":
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     problem = problem.CplexTurboLPProblem(code)
     methods = bnb.BFSMethod, bnb.DFSMethod, bnb.DSTMethod, bnb.BBSMethod
-    seed = np.random.randint(9999999)
-    seed = 3812070
+    #seed = np.random.randint(9999999)
+    seed = 7972370
     np.random.seed(seed)
     
     llr = np.random.standard_normal(code.blocklength)
