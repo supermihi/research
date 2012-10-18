@@ -382,4 +382,3 @@ class Node:
         return "Node({}/{} with lb={},ub={})".format(self.branchVariable, self.branchValue, self.lowerb, self.upperb)
     
     
-#TODO: create Funktion, die neue Nodes erstelllt ahängig von der branchMethod

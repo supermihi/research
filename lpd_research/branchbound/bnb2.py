@@ -9,6 +9,7 @@ from __future__ import print_function
 import numpy as np
 from collections import deque
 import heapq
+import logging
 
 class BranchMethod:
     
@@ -30,13 +31,17 @@ class BranchMethod:
         """Moves problem from fromNode to toNode.
         """
         #fix = []
+
         logging.debug('moving from {} to {}'.format(fromNode, toNode))
-        fix = toNode.copy() - fromNode.copy()
-        unfix = fromNode.copy() - toNode.copy()
-        self.problem.fixVariables(fix)
-        self.problem.unfixVariables(unfix)
-        return (len(fix), len(unfix))
-        
+        #fix = toNode.copy() - fromNode.copy()
+        #unfix = fromNode.copy() - toNode.copy()
+        #self.problem.unfixVariables(unfix)
+        #self.problem.fixVariables(fix)
+        self.problem.unfixVariables(fromNode.branchVarVal)
+        self.problem.fixVariables(toNode.branchVarVal)
+
+        #return (len(fix), len(unfix))
+        return (len(toNode.branchVarVal), len(fromNode.branchVarVal))
         
         
         
@@ -375,8 +380,8 @@ class Node2:
         #nec to use BestBound
         self.solution = None
         self.objectiveValue = None
-        
-        self.branchVarVal = branchVarVal.copy().add((branchVariable, branchValue))
+        self.branchVarVal = branchVarVal.append(branchVariable, branchValue)
+        #self.branchVarVal = branchVarVal.copy().add((branchVariable, branchValue))
         if parent is None:
             self.depth = 0
         else:
