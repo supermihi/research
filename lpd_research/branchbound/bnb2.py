@@ -259,7 +259,7 @@ class BranchAndBound:
                     if self.optimalObjectiveValue > activeNew.objectiveValue:
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
-                    activeNew.upperb = self.problem.objectiveValue
+                    activeNew.upperb = activeNew.objectiveValue
                 self.updBound(activeNew)
             
                 #create new children or close branch
