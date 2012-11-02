@@ -232,8 +232,10 @@ class BranchAndBound:
             moveCount += 1
             
             if activeNew.solution is not None:
+                logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
                 branchVariable = self.findVariable(activeNew.solution)
+                logging.debug('branchVariable: {}'.format(branchVariable))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
                 
@@ -247,7 +249,8 @@ class BranchAndBound:
                     if self.optimalObjectiveValue > activeNew.objectiveValue:
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
-                    activeNew.upperb = self.problem.objectiveValue
+                    logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
+                    activeNew.upperb = activeNew.objectiveValue
                 self.updBound(activeNew)
             
                 #create new children or close branch
