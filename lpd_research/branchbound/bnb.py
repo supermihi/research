@@ -7,201 +7,17 @@
 
 from __future__ import print_function
 import numpy as np
-from collections import deque
-import heapq
 import logging
-
-class BranchMethod:
-    
-    def __init__(self, rootNode, problem):
-        self.root = rootNode
-        self.problem = problem
-    
-    def getActiveNode(self, activeOld):
-        """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
-        pass
-    
-    def addNodes(self, node0, node1):
-        pass
-    
-    def createNodes(self, branchVariable, parent):
-        pass
-    
-    def move(self, fromNode, toNode):
-        """Moves problem from fromNode to toNode.
-        """
-        unfixCount = 0
-        fixCount = 0
-        fix = []
-        #logging.debug('moving from {} to {}'.format(fromNode, toNode))
-        while fromNode.depth > toNode.depth:
-            self.problem.unfixVariable(fromNode.branchVariable)
-            unfixCount = unfixCount + 1
-            #logging.debug('unfix variable {}'.format(fromNode.branchVariable))
-            fromNode = fromNode.parent
-        
-        while toNode.depth > fromNode.depth:
-            fix.append( (toNode.branchVariable, toNode.branchValue) )
-            fixCount = fixCount + 1
-            toNode = toNode.parent
-            
-        while toNode is not fromNode:
-            #logging.debug('unfix variable* {}'.format(fromNode.branchVariable))
-            self.problem.unfixVariable(fromNode.branchVariable)
-            unfixCount = unfixCount +1
-            fix.append( (toNode.branchVariable, toNode.branchValue) )
-            fromNode = fromNode.parent
-            toNode = toNode.parent
-        #logging.debug("Fix list: {}".format(fix))
-        for var, value in fix:
-            self.problem.fixVariable(var, value)
-            fixCount = fixCount + 1
-        return (fixCount, unfixCount)
-    
-    
-    
-
-class BFSMethod(BranchMethod):
-    
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque( [rootNode] )
-        
-    def getActiveNode(self, activeOld):
-        try:
-            activeNode = self.activeNodes.popleft()
-        except IndexError:
-            raise NodesExhausted()
-        (fixC, unfixC) = self.move(activeOld, activeNode)
-        self.problem.solve()
-        activeNode.solution = self.problem.solution
-        activeNode.objectiveValue = self.problem.objectiveValue
-        #self.move(activeNode, activeOld)
-        return (activeNode, fixC, unfixC)
-        
-    
-    def addNodes(self, node0, node1):
-        self.activeNodes.append(node1)
-        self.activeNodes.append(node0)
-        
-    def createNodes(self, branchVariable, parent):
-        parent.child0 = Node(parent, branchVariable, 0)
-        parent.child1 = Node(parent, branchVariable, 1)
-        
-        
-        
-class DFSMethod(BranchMethod):
-    
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque ( [rootNode])
-
-    def getActiveNode(self, activeOld):
-        try:
-            activeNode = self.activeNodes.pop()
-        except IndexError:
-            raise NodesExhausted()
-        (fixC, unfixC) = self.move(activeOld, activeNode)
-        self.problem.solve()
-        activeNode.solution = self.problem.solution
-        activeNode.objectiveValue = self.problem.objectiveValue
-        #self.move(activeNode, activeOld)
-        return (activeNode, fixC, unfixC)
-        
-    def addNodes(self, node0, node1):
-        self.activeNodes.append(node1)
-        self.activeNodes.append(node0)
-        
-    def createNodes(self, branchVariable, parent):
-        parent.child0 = Node(parent, branchVariable, 0)
-        parent.child1 = Node(parent, branchVariable, 1)
-        
-    
-        
-class BBSMethod(BranchMethod):
-    
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
-        self.problem.solve()
-        self.root.solution = self.problem.solution
-        self.root.objectiveValue = self.root.lowerb = self.problem.objectiveValue
-        self.activeNodes = [ (rootNode.lowerb, rootNode) ]
-        
-        
-    def getActiveNode(self, activeOld):
-        try:
-            activeNode = heapq.heappop(self.activeNodes)[1]
-        except IndexError:
-            raise NodesExhausted()
-        (fixC, unfixC) = self.move(activeOld, activeNode)
-        return (activeNode, fixC, unfixC)
-         
-    def addNodes(self,node0, node1):
-        heapq.heappush(self.activeNodes, (node0.lowerb, node0))
-        heapq.heappush(self.activeNodes, (node1.lowerb, node1))
-        
-    def createNodes(self, branchVariable, parent):
-        parent.child0 = Node(parent, branchVariable, 0)
-        self.problem.fixVariable(branchVariable, 0)
-        self.problem.solve()
-        parent.child0.solution = self.problem.solution
-        parent.child0.objectiveValue = self.problem.objectiveValue
-        self.problem.unfixVariable(branchVariable)
-        parent.child1 = Node(parent, branchVariable, 1)
-        self.problem.fixVariable(branchVariable, 1)
-        self.problem.solve()
-        parent.child1.solution = self.problem.solution
-        parent.child1.objectiveValue = self.problem.objectiveValue
-        self.problem.unfixVariable(branchVariable)              
-
-#DeepSeaTroll Search Method        
-class DSTMethod(BranchMethod):
-    
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque([rootNode])
-        self.problem.solve()
-        self.root.solution = self.problem.solution
-        self.root.objectiveValue = self.problem.objectiveValue
-        
-    def getActiveNode(self, activeOld):
-        try:
-            activeNode = self.activeNodes.pop()
-        except IndexError:
-            raise NodesExhausted()
-        (fixC, unfixC) = self.move(activeOld, activeNode)
-        return (activeNode, fixC, unfixC)
-        
-    def addNodes(self, node0, node1):
-        if node0.objectiveValue < node1.objectiveValue:
-            self.activeNodes.append(node1)
-            self.activeNodes.append(node0)
-        else:
-            self.activeNodes.append(node0)
-            self.activeNodes.append(node1)
-            
-    def createNodes(self, branchVariable, parent):
-        parent.child0 = Node(parent, branchVariable, 0)
-        self.problem.fixVariable(branchVariable, 0)
-        self.problem.solve()
-        parent.child0.solution = self.problem.solution
-        parent.child0.objectiveValue = self.problem.objectiveValue
-        self.problem.unfixVariable(branchVariable)
-        parent.child1 = Node(parent, branchVariable, 1)
-        self.problem.fixVariable(branchVariable, 1)
-        self.problem.solve()
-        parent.child1.solution = self.problem.solution
-        parent.child1.objectiveValue = self.problem.objectiveValue
-        self.problem.unfixVariable(branchVariable) 
 
 class BranchAndBound:
     
-    def __init__(self, problem, eps=1e-6, branchMethod=DFSMethod): 
+    def __init__(self, problem, selectionMethod, branchRule, eps=1e-6): 
         self.problem = problem
         self.eps = eps
         self.root = Node()
         #the method used to branch at Nodes
-        self.bMethod = branchMethod(self.root, self.problem)
+        self.selectionMethode = selectionMethod(self.root, self.problem)
+        self.branchRule = branchRule(self.problem)
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
@@ -218,13 +34,12 @@ class BranchAndBound:
         while True:
             logging.debug('main loop iteration {}'.format(branchCount))
             logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
-            logging.debug('#active nodes: {}\n'.format(len(self.bMethod.activeNodes)))
+            logging.debug('#active nodes: {}\n'.format(len(self.selectionMethode.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
-                (activeNew, fixC, unfixC) = self.bMethod.getActiveNode(activeOld)
+                (activeNew, fixC, unfixC) = self.selectionMethode.getActiveNode(activeOld)
             except NodesExhausted:
                 break
-            #logging.debug("active node: {}".format(activeNew))
             
             #(fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
             fixCount += fixC
@@ -234,19 +49,19 @@ class BranchAndBound:
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
-                branchVariable = self.findVariable(activeNew.solution)
+                branchVariable = self.branchRule.selectVariable()
                 logging.debug('branchVariable: {}'.format(branchVariable))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
-                
-                
+
                 #hier eventuell heuristik für upperbound einfügen
-                
-                
                 
                 if branchVariable is None:
                     # have a feasible solution
                     if self.optimalObjectiveValue > activeNew.objectiveValue:
+                        if self.optimalSolution is None:
+                            logging.info("first feasible solution after {} steps".format(branchCount))
+                        # found new global optimum
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
                     logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
@@ -262,10 +77,10 @@ class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    self.bMethod.createNodes(branchVariable, activeNew)
+                    self.selectionMethode.createNodes(branchVariable, activeNew)
                     #activeNew.child0 = Node(activeNew, branchVariable, 0)
                     #activeNew.child1 = Node(activeNew, branchVariable, 1)
-                    self.bMethod.addNodes(activeNew.child0,activeNew.child1)
+                    self.selectionMethode.addNodes(activeNew.child0,activeNew.child1)
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf
@@ -273,7 +88,8 @@ class BranchAndBound:
             activeOld = activeNew
         
         #match fix and unfix count to the selected branchMethod
-        if isinstance(self.bMethod, BBSMethod) or isinstance(self.bMethod, DSTMethod):
+        from .nodeselection import BBSMethod, DSTMethod
+        if isinstance(self.selectionMethode, BBSMethod) or isinstance(self.selectionMethode, DSTMethod):
             fixCount += 2*branchCount
             unfixCount += 2*branchCount
             
@@ -324,42 +140,10 @@ class BranchAndBound:
             elif lower > lbp:
                 node.parent.lowerb = lower
                 self.updBound(node.parent)
-        
-        
-    
-    def findVariable(self, vec):
-        """Specifies the variable to be branched, or None if *vec* is integral.
-        """
-        for (i,x) in enumerate(vec):
-            if x > 0 + self.eps and x < 1 - self.eps:
-                return i
-        return None
-        
-    #===========================================================================
-    # def getActiveNode(self):
-    #    """Gets one active node depending on searchrule from the activeNode-list.
-    #    """
-    #    if self.depthFirst:
-    #        return self.activeNodes.pop()
-    #    else:
-    #        return self.activeNodes.popleft()
-    #===========================================================================
 
 class NodesExhausted(Exception):
     pass
 
-
-        
-            
-         
-#===============================================================================
-# def getActiveDFS(bnb):
-#    return bnb.activeNodes.pop()       
-#  
-#            
-# def getActiveBFS(bnb):
-#    return bnb.activeNodes.popleft()
-#===============================================================================
 
 class Node:
     
