@@ -28,6 +28,8 @@ if __name__ == "__main__":
     code = StandardTurboCode(LTEEncoder(), interleaver, "smallTestCode")
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
+    #nodeSelectionMethods = [nodeselection.DSTMethod]
+    #branchingRules = [branchrules.FirstFractional]
     nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
                            nodeselection.DSTMethod, nodeselection.BBSMethod
     branchingRules = branchrules.FirstFractional, branchrules.MostFractional, \
