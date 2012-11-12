@@ -45,17 +45,15 @@ class BranchAndBound:
             fixCount += fixC
             unfixCount += unfixC
             moveCount += 1
-            
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
-                branchVariable = self.branchRule.selectVariable()
+                branchVariable = self.branchRule.selectVariable(activeNew.solution)
                 logging.debug('branchVariable: {}'.format(branchVariable))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
 
                 #hier eventuell heuristik für upperbound einfügen
-                
                 if branchVariable is None:
                     # have a feasible solution
                     if self.optimalObjectiveValue > activeNew.objectiveValue:
@@ -102,8 +100,6 @@ class BranchAndBound:
         logging.debug(self.optimalObjectiveValue)
         logging.debug("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
         logging.debug("MoveCount: {move}".format(move=moveCount))
-        #logging.debug("Bei DSTMethod und BBSMethod sind fixCount und UnfixCount je um 2 mal den BranchCount erhöht.")
-        #logging.debug("Bei DFSMethod und BFSMethod ist der moveCount verdreifacht.")
         return self.optimalSolution
              
             
