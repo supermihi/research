@@ -20,7 +20,7 @@ from libc.math cimport sqrt, abs
 
 from lpdecoding.core import Decoder
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
-from lpdecoding.codes.trellis import INFO, PARITY
+from lpdecoding.codes.trellis cimport _INFO, _PARITY
 from lpdecoding.utils cimport StopWatch
 
 DEF EPS = 1e-10
@@ -70,7 +70,7 @@ cdef void solveUT(np.double_t[:,:] a,
             tmp -= x[j]*a[S[i],S[j]]
         x[i] = tmp / a[S[i],S[i]]
 
-labelStr = { INFO: "info", PARITY: "parity"}
+labelStr = { _INFO: "info", _PARITY: "parity"}
 
 cdef class CSPDecoder(Decoder):
     """Constrained Shortest Path Decoder."""
@@ -129,7 +129,6 @@ cdef class CSPDecoder(Decoder):
             int k, mainIterations = 0
             np.double_t[:] direction = self.direction, X = self.X
             np.int_t[:,:] paths = self.paths           
-        
         self.majorCycles = self.minorCycles = 0
         if self.measureTimes:
             self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.gensol_time = self.setcost_time = 0
@@ -177,15 +176,26 @@ cdef class CSPDecoder(Decoder):
                         self.stats["NaNs"] += 1
                     except KeyError:
                         self.stats["NaNs"] = 1
+                    print('NAN')
                     break
                 #  compute intersection of hyperplane with c-axis
                 b_r = self.current_ref*X[self.k] - dot(X, X, self.k+1)
                 norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
                 if norm_a_r < EPS:
+                    #print('norm_a_r={}'.format(norm_a_r))
                     break
                 ref = b_r / (self.current_ref - X[self.k])
-                if ref-old_ref < EPS:
-                    break
+                if np.abs(ref-old_ref < EPS):
+                    #print('not breaking')
+                    #break
+                    pass
+                if X[self.k] <= self.current_ref:
+                    #print('INFEASIBLE')
+                    #print(X[self.k])
+                    #print(self.current_ref)
+                    self.objectiveValue = np.inf
+                    self.solution = None
+                    return
                 self.objectiveValue = self.current_ref = ref #  update reference point 
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
@@ -597,6 +607,13 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.lenS):
             solution += w[S[k]]*self.code.encode(np.asarray(paths[S[k],:], dtype=np.int))
         self.solution = solution
+
+    def printSolutionParts(self):
+        for k in range(self.lenS):
+            print(np.asarray(self.paths[self.S[k],:], dtype=np.int), self.P[self.k, self.S[k]])
+        print('')
+        for k in range(self.lenS):
+            print(self.code.encode(np.asarray(self.paths[self.S[k],:], dtype=np.int)))
         
     
     cpdef params(self):
@@ -613,9 +630,9 @@ class NDFInteriorDecoder(Decoder):
         self.k = len(self.constraints)
         for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
             if not hasattr(t1[s1], "g_coeffs"):
-                t1[s1].g_coeffs = { INFO: [], PARITY: [] }
+                t1[s1].g_coeffs = { _INFO: [], _PARITY: [] }
             t1[s1].g_coeffs[l1].append( (i, 1) )
                 
             if not hasattr(t2[s2], "g_coeffs"):
-                t2[s2].g_coeffs = { INFO: [], PARITY: [] }
+                t2[s2].g_coeffs = { _INFO: [], _PARITY: [] }
             t2[s2].g_coeffs[l2].append( (i, -1) )

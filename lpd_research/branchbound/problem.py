@@ -4,9 +4,14 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+from __future__ import print_function
+import logging
 
 import numpy as np
+import cplex
+
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
+from lpdecoding.codes import turbolike, trellis
 
 class Problem(object):
     
@@ -26,6 +31,24 @@ class Problem(object):
     def unfixVariable(self, var):
         pass
     
+    def fixVariables(self, fixes):
+        """Fix several variables in one step, defined by a list of (var, val) tuples.
+        
+        The default implementation calls fixVariable len(fixes) times. Subclasses may
+        do this more efficiently.
+        """
+        for var, value in fixes:
+            self.fixVariable(var, value)
+            
+    def unfixVariables(self, vars):
+        """Unfix several variables at once.
+        
+        Like *fixVariables*, the default implenetation just calls unfixVariable for each
+        variable separately.
+        """
+        for var in vars:
+            self.unfixVariable(var)
+    
     def setObjectiveFunction(self, c):
         """Set the objective function to vector *c*, a numpy array."""
         pass
@@ -34,7 +57,53 @@ class CSPTurboLPProblem(Problem):
     def __init__(self, code):
         from lpresearch import cspdecoder
         Problem.__init__(self)
+#        self.checkProblem = CplexTurboLPProblem(code)
         self.decoder = cspdecoder.CSPDecoder(code)
+        self.code = code
+        
+    def setObjectiveFunction(self, c):
+#        self.checkProblem.setObjectiveFunction(c)
+        self.decoder.llrVector = c
+        self.unfixVariables(range(self.code.blocklength))
+        
+    def solve(self):
+        #self.checkProblem.solve()
+        #print('check obj value: {}'.format(self.checkProblem.objectiveValue))
+        
+        self.decoder.solve()
+        self.objectiveValue = self.decoder.objectiveValue
+        if self.objectiveValue == np.inf:
+            self.solution = None
+        else:
+            self.solution = self.decoder.solution
+#        if np.abs(self.objectiveValue - self.checkProblem.objectiveValue) > 1e-8:
+#            print('unequal: {} != {}'.format(self.objectiveValue, self.checkProblem.objectiveValue))
+#            print(self.printFixes())
+#            print(self.checkProblem.printFixes())
+#            print(self.solution)
+#            self.decoder.printSolutionParts()
+#            print(self.code.encoders[1].trellis[8].fix_parity)
+#            raw_input() 
+        
+    def fixVariable(self, var, value):
+#        self.checkProblem.fixVariable(var, value)
+        self.code.fixCodeBit(var, value)
+        
+    def unfixVariable(self, var):
+#        self.checkProblem.unfixVariable(var)
+        self.code.fixCodeBit(var, -1)
+        
+    def printFixes(self):
+        ret = ''
+        for i in range(self.code.blocklength):
+            segments = self.code.segmentsForCodeBit(i)
+            for segment, label in segments:
+                if label == trellis.INFO and segment.fix_info != -1:
+                    ret += '{}({}):{}={}[info] '.format(segment.trellis.name, segment.pos, i, segment.fix_info)
+                if label == trellis.PARITY and segment.fix_parity != -1:
+                    ret += '{}({}):{}={}[parity] '.format(segment.trellis.name, segment.pos, i, segment.fix_parity)
+        return ret + '\n'
+                    
 
 class CplexTurboLPProblem(Problem):
     
@@ -47,13 +116,18 @@ class CplexTurboLPProblem(Problem):
         self.unfixVariables(self.decoder.x)
         
     def solve(self):
-        self.decoder.solve()
-        if not self.decoder.cplex.solution.is_primal_feasible():
+        print('solving\n\n')
+        try:
+            self.decoder.solve()
+            if not self.decoder.cplex.solution.is_primal_feasible():
+                self.solution = None
+                self.objectiveValue = np.inf
+            else:
+                self.solution = self.decoder.solution
+                self.objectiveValue = self.decoder.objectiveValue
+        except cplex.exceptions.CplexSolverError as e:
             self.solution = None
             self.objectiveValue = np.inf
-        else:
-            self.solution = self.decoder.solution
-            self.objectiveValue = self.decoder.objectiveValue
 
     def fixVariable(self, var, value):
         if value == 0:
@@ -78,3 +152,14 @@ class CplexTurboLPProblem(Problem):
         """Unfix given *vars*."""
         self.decoder.cplex.variables.set_lower_bounds([ (var, 0) for var in vars])
         self.decoder.cplex.variables.set_upper_bounds([ (var, 1) for var in vars])
+        
+    def printFixes(self):
+        ret = ''
+        for i in range(self.decoder.code.blocklength):
+            #print(self.decoder.cplex.variables.get_upper_bounds(i))
+            #print(self.decoder.cplex.variables.get_lower_bounds(i))
+            if self.decoder.cplex.variables.get_upper_bounds(self.decoder.x[i]) == 0:
+                ret += '{}=0, '.format(i)
+            elif self.decoder.cplex.variables.get_lower_bounds(self.decoder.x[i]) == 1:
+                ret += '{}=1, '.format(i)
+        return ret[:-2] + '\n'

@@ -15,7 +15,7 @@ import numpy as np
 
 from branchbound import branchrules, nodeselection, problem as bnbproblem, bnb
 from lpdecoding.codes.interleaver import Interleaver
-from lpdecoding.codes.turbolike import StandardTurboCode, LTETurboCode
+from lpdecoding.codes.turbolike import StandardTurboCode
 from lpdecoding.codes.convolutional import LTEEncoder
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
 from lpdecoding.utils import stopwatch
@@ -28,10 +28,10 @@ if __name__ == "__main__":
     code = StandardTurboCode(LTEEncoder(), interleaver, "smallTestCode")
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
-    nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
+    nodeSelectionMethods = nodeselection.BFSMethod , nodeselection.DFSMethod, \
                            nodeselection.DSTMethod, nodeselection.BBSMethod
-    branchingRules = branchrules.FirstFractional, branchrules.MostFractional, \
-                     branchrules.LeastReliable
+    branchingRules = branchrules.LeastReliable, branchrules.FirstFractional, branchrules.MostFractional
+                     
     #seed = np.random.randint(9999999)
     seed = 9864950
     #seed = 3977440
@@ -43,7 +43,8 @@ if __name__ == "__main__":
     fixCounts = {}
     times = {}
     for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
-        problem = bnbproblem.CplexTurboLPProblem(code)
+        #problem = bnbproblem.CplexTurboLPProblem(code)
+        problem = bnbproblem.CSPTurboLPProblem(code)
         problem.setObjectiveFunction(llr)
         with stopwatch() as timer:
             algo = bnb.BranchAndBound(problem, eps=1e-10, branchRule=bRule, selectionMethod=nsMethod)
