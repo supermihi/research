@@ -28,16 +28,24 @@ class FirstFractional(BranchingRule):
 class MostFractional(BranchingRule):
     """Rule that selects the variable maximizing x - [x]."""
     
+    def __init__(self, decoder):
+        BranchingRule.__init__(self, decoder)
+        self.infolength = decoder.code.infolength
+
     def selectVariable(self):
-        index = np.argmin(np.abs(self.problem.solution-0.5))
+        index = np.argmin(np.abs(self.problem.solution[:self.infolength]-0.5))
         if self.problem.solution[index] < 1e-10 or self.problem.solution[index] > 1-1e-10:
             return None
         return index
     
 class LeastReliable(BranchingRule):
     
+    def __init__(self, decoder):
+        BranchingRule.__init__(self, decoder)
+        self.infolength = decoder.code.infolength
+    
     def selectVariable(self):
-        for index in np.argsort(np.abs(self.problem.decoder.llrVector)):
+        for index in np.argsort(np.abs(self.problem.decoder.llrVector[:self.infolength])):
             x = self.problem.solution[index]
             if x > 1e-10 and x < 1 - 1e-10:
                 return index
