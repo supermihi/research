@@ -67,16 +67,14 @@ class CSPTurboLPProblem(Problem):
         self.unfixVariables(range(self.code.blocklength))
         
     def solve(self):
-        #self.checkProblem.solve()
-        #print('check obj value: {}'.format(self.checkProblem.objectiveValue))
-        
+#        self.checkProblem.solve()        
         self.decoder.solve()
         self.objectiveValue = self.decoder.objectiveValue
         if self.objectiveValue == np.inf:
             self.solution = None
         else:
             self.solution = self.decoder.solution
-#        if np.abs(self.objectiveValue - self.checkProblem.objectiveValue) > 1e-8:
+#        if not np.isclose(self.objectiveValue, self.checkProblem.objectiveValue, rtol=1e-5):
 #            print('unequal: {} != {}'.format(self.objectiveValue, self.checkProblem.objectiveValue))
 #            print(self.printFixes())
 #            print(self.checkProblem.printFixes())
@@ -91,24 +89,14 @@ class CSPTurboLPProblem(Problem):
         
     def unfixVariable(self, var):
 #        self.checkProblem.unfixVariable(var)
-        self.code.fixCodeBit(var, -1)
-        
-    def printFixes(self):
-        ret = ''
-        for i in range(self.code.blocklength):
-            segments = self.code.segmentsForCodeBit(i)
-            for segment, label in segments:
-                if label == trellis.INFO and segment.fix_info != -1:
-                    ret += '{}({}):{}={}[info] '.format(segment.trellis.name, segment.pos, i, segment.fix_info)
-                if label == trellis.PARITY and segment.fix_parity != -1:
-                    ret += '{}({}):{}={}[parity] '.format(segment.trellis.name, segment.pos, i, segment.fix_parity)
-        return ret + '\n'
-                    
+        self.code.fixCodeBit(var, -1)       
+
 
 class CplexTurboLPProblem(Problem):
     
     def __init__(self, code):
         Problem.__init__(self)
+        self.code = code
         self.decoder = CplexTurboLikeDecoder(code, ip=False)
         
     def setObjectiveFunction(self, c):
@@ -116,7 +104,6 @@ class CplexTurboLPProblem(Problem):
         self.unfixVariables(self.decoder.x)
         
     def solve(self):
-        print('solving\n\n')
         try:
             self.decoder.solve()
             if not self.decoder.cplex.solution.is_primal_feasible():

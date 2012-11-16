@@ -9,6 +9,8 @@ from __future__ import print_function
 import numpy as np
 import logging
 
+from lpdecoding.utils import StopWatch
+
 class BranchAndBound:
     
     def __init__(self, problem, selectionMethod, branchRule, eps=1e-6): 
@@ -31,6 +33,8 @@ class BranchAndBound:
         fixCount = 0
         unfixCount = 0
         moveCount = 0
+        timer = StopWatch()
+        timer.start()
         while True:
             logging.debug('main loop iteration {}'.format(branchCount))
             logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
@@ -78,7 +82,10 @@ class BranchAndBound:
                     self.selectionMethode.createNodes(branchVariable, activeNew)
                     #activeNew.child0 = Node(activeNew, branchVariable, 0)
                     #activeNew.child1 = Node(activeNew, branchVariable, 1)
-                    self.selectionMethode.addNodes(activeNew.child0,activeNew.child1)
+                    if np.random.randint(0, 2) == 0:
+                        self.selectionMethode.addNodes(activeNew.child0,activeNew.child1)
+                    else:
+                        self.selectionMethode.addNodes(activeNew.child1, activeNew.child0)
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf
@@ -95,6 +102,7 @@ class BranchAndBound:
         self.fixCount = fixCount
         self.unfixCount = unfixCount
         self.branchCount = branchCount
+        self.time = timer.stop()
         logging.debug("******* optimal solution found *******")
         logging.debug(self.optimalSolution)
         logging.debug(self.optimalObjectiveValue)
