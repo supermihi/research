@@ -5,7 +5,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
+from __future__ import print_function, division
 import itertools
 import logging
 import random
@@ -28,45 +28,56 @@ if __name__ == "__main__":
     code = StandardTurboCode(LTEEncoder(), interleaver, "smallTestCode")
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
-    nodeSelectionMethods = nodeselection.BFSMethod , nodeselection.DFSMethod, \
+
+    nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
                            nodeselection.DSTMethod, nodeselection.BBSMethod
-    branchingRules = branchrules.LeastReliable, branchrules.FirstFractional, branchrules.MostFractional
+    branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
+                     branchrules.FirstFractional, \
+                     branchrules.MostFractional, branchrules.MostFractionalSystematic
                      
     #seed = np.random.randint(9999999)
     seed = 9864950
+    numberOfTrials = 10
     #seed = 3977440
     np.random.seed(seed)
-    llr = np.random.standard_normal(code.blocklength)
-    print(llr)
-    branchCounts = {}
-    moveCounts = {}
-    fixCounts = {}
-    times = {}
-    for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
-        #problem = bnbproblem.CplexTurboLPProblem(code)
-        problem = bnbproblem.CSPTurboLPProblem(code)
-        problem.setObjectiveFunction(llr)
-        with stopwatch() as timer:
+    attrs = "fixCount", "moveCount", "branchCount", "time"
+    for attr in attrs:
+        locals()[attr+"s"] = {}
+        for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
+            locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] = 0
+        
+    for i in range(numberOfTrials):
+        for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
+            llr = np.random.standard_normal(code.blocklength)
+            #problem = bnbproblem.CplexTurboLPProblem(code)
+            problem = bnbproblem.CSPTurboLPProblem(code)
+            problem.setObjectiveFunction(llr)
             algo = bnb.BranchAndBound(problem, eps=1e-10, branchRule=bRule, selectionMethod=nsMethod)
             solution = algo.run()
-        times[(nsMethod.__name__, bRule.__name__)] = timer.duration
-        checkDecoder.decode(llr)
-        if np.allclose(checkDecoder.solution, solution):
-            print("method {}/{} okay".format(nsMethod, bRule))
-            print("\toptimal value={}".format(algo.optimalObjectiveValue))
-        else:
-            print("method {}/{} wrong solution:".format(nsMethod, bRule))
-            print("\tBNB optimum={}".format(algo.optimalObjectiveValue))
-            print("\tCPX optimum={}".format(checkDecoder.objectiveValue))
-            print('\tseed= {}'.format(seed))
-            raw_input()
-        print("\tbranch count={}".format(algo.branchCount))
-        print("\tmove count={}".format(algo.moveCount))
-        print("\tfix count={}".format(algo.fixCount))
-        print("\ttime={}".format(timer.duration))
-        fixCounts[(nsMethod.__name__, bRule.__name__)] = algo.fixCount
-        branchCounts[(nsMethod.__name__, bRule.__name__)] = algo.branchCount
-        moveCounts[(nsMethod.__name__, bRule.__name__)] = algo.moveCount
-    print("move counts: {}".format(moveCounts))
-    print("fix counts: {}".format(fixCounts))
-    print("branch counts: {}".format(branchCounts))
+            for attr in attrs:
+                locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] += getattr(algo, attr)
+            checkDecoder.decode(llr)
+            if np.allclose(checkDecoder.solution, solution):
+                print("method {}/{} okay".format(nsMethod, bRule))
+                print("\toptimal value={}".format(algo.optimalObjectiveValue))
+            else:
+                print("method {}/{} wrong solution:".format(nsMethod, bRule))
+                print("\tBNB optimum={}".format(algo.optimalObjectiveValue))
+                print("\tCPX optimum={}".format(checkDecoder.objectiveValue))
+                print('\tseed= {}'.format(seed))
+                raw_input()
+            print("\tbranch count={}".format(algo.branchCount))
+            print("\tmove count={}".format(algo.moveCount))
+            print("\tfix count={}".format(algo.fixCount))
+    for attr in attrs:
+        for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
+            locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] /= numberOfTrials
+    import pprint
+    print("move counts:")
+    pprint.pprint(moveCounts)
+    print("fix counts:")
+    pprint.pprint(fixCounts)
+    print("branch counts:")
+    pprint.pprint(branchCounts)
+    print("times:")
+    pprint.pprint(times)
