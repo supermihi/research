@@ -85,12 +85,12 @@ cdef class CSPDecoder(Decoder):
         Decoder.__init__(self, code)
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
+        self.blocklength = code.blocklength
         self.maxMajorCycles = maxMajorCycles
         self.measureTimes = measureTimes
         if name is None:
             name = "CSPDecoder" 
         self.name = name
-        self.definingEncoder = code.encoders[0]
         #=======================================================================
         # Set coefficients and indices for constraints g_i on the involved
         # trellis graphs.
@@ -116,7 +116,7 @@ cdef class CSPDecoder(Decoder):
         self.Sfree = np.empty(self.k+2,dtype=np.int)
         self.w = np.empty(self.k+2)
         self.RHS = np.empty((self.k+2, self.k+2))
-        self.paths = np.empty((self.k+2, self.definingEncoder.trellis.length), dtype=np.int)
+        self.codewords = np.empty((self.k+2, self.blocklength), dtype=np.double)
         self.direction = np.empty(self.k+1)
         self.timer = StopWatch()
         
@@ -128,7 +128,7 @@ cdef class CSPDecoder(Decoder):
             double old_ref = 0, ref = 0, b_r, norm_a_r, delta_r
             int k, mainIterations = 0
             np.double_t[:] direction = self.direction, X = self.X
-            np.int_t[:,:] paths = self.paths           
+            np.double_t[:,:] codewords = self.codewords           
         self.majorCycles = self.minorCycles = 0
         if self.measureTimes:
             self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.gensol_time = self.setcost_time = 0
@@ -141,7 +141,7 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.k):
             direction[k] = 0
         direction[self.k] = 1
-        self.solveScalarization(direction, X, paths[0,:])
+        self.solveScalarization(direction, X, codewords[0,:])
         self.lenS = 1
         #  test if initial path is feasible
         if norm(X, self.k) < 1e-8:
@@ -176,26 +176,25 @@ cdef class CSPDecoder(Decoder):
                         self.stats["NaNs"] += 1
                     except KeyError:
                         self.stats["NaNs"] = 1
+                    print(self.objectiveValue)
                     print('NAN')
                     break
                 #  compute intersection of hyperplane with c-axis
                 b_r = self.current_ref*X[self.k] - dot(X, X, self.k+1)
                 norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
+                ref = b_r / (self.current_ref - X[self.k])
                 if norm_a_r < EPS:
                     #print('norm_a_r={}'.format(norm_a_r))
+                    #self.objectiveValue = ref
                     break
-                ref = b_r / (self.current_ref - X[self.k])
-                if np.abs(ref-old_ref < EPS):
-                    #print('not breaking')
-                    #break
-                    pass
-                if X[self.k] <= self.current_ref:
+                if X[self.k] <= self.current_ref + EPS:
                     #print('INFEASIBLE')
-                    #print(X[self.k])
-                    #print(self.current_ref)
                     self.objectiveValue = np.inf
                     self.solution = None
                     return
+                elif np.abs(ref-old_ref < EPS):
+                    #self.objectiveValue = ref
+                    break
                 self.objectiveValue = self.current_ref = ref #  update reference point 
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
@@ -272,13 +271,13 @@ cdef class CSPDecoder(Decoder):
             int lenS = self.lenS
             bint badInstance = False
             np.double_t[:,:] R = self.R, \
-                             P = self.P
+                             P = self.P, \
+                             codewords = self.codewords
             np.double_t[:] space1 = self.space1, \
                            space2 = self.space2, \
                            space3 = self.space3, \
                            w = self.w, \
                            X = self.X
-            np.int_t[:,:] paths = self.paths
             np.int_t[:] S = self.S, Sfree = self.Sfree
   
         oldnormx = 1e20
@@ -316,7 +315,7 @@ cdef class CSPDecoder(Decoder):
             # Step 1. (b): P_J = ArgMin(X^T P: P in Polytope)
             if self.measureTimes:
                 self.timer.start()
-            self.solveScalarization(X, P[:, newIndex], paths[newIndex,:])
+            self.solveScalarization(X, P[:, newIndex], codewords[newIndex,:])
             if self.measureTimes:
                 self.sp_time += self.timer.stop()
             P[self.k, newIndex] -= self.current_ref # translate polytope by -Y
@@ -520,7 +519,7 @@ cdef class CSPDecoder(Decoder):
         self.lenS = lenS
         return 1
     
-    cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result, np.int_t[:] path):
+    cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result, np.double_t[:] codeword):
         """Solve the weighted sum scalarization problem, i.e. shortest path with modified cost.
         
         *direction* defines the weights for the different constraints, where direction[-1] is
@@ -533,11 +532,10 @@ cdef class CSPDecoder(Decoder):
             int k
         for k in range(self.k):
             result[k] = 0
+        for k in range(self.blocklength):
+            codeword[k] = 0
         for enc in self.code.encoders:
-            if enc is self.definingEncoder:
-                c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, path)
-            else:
-                c_result += shortestPathScalarization(enc.trellis, lamb, direction, result)
+            c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword)
         result[self.k] = c_result
     
     cdef void resetData(self, np.double_t[:] initPoint):
@@ -598,14 +596,15 @@ cdef class CSPDecoder(Decoder):
     
     cdef void calculateSolution(self):
         cdef:
-            np.ndarray[ndim=1, dtype=np.double_t] solution = np.zeros(self.code.blocklength,
+            np.ndarray[ndim=1, dtype=np.double_t] solution = np.zeros(self.blocklength,
                                                                       dtype=np.double)
-            np.int_t[:,:] paths = self.paths
+            np.double_t[:,:] codewords = self.codewords
             np.int_t[:] S = self.S
             np.double_t[:] w = self.w
-            int k
-        for k in range(self.lenS):
-            solution += w[S[k]]*self.code.encode(np.asarray(paths[S[k],:], dtype=np.int))
+            int i, k
+        for i in range(self.blocklength):
+            for k in range(self.lenS):
+                solution[i] += w[S[k]]*codewords[S[k],i]
         self.solution = solution
 
     def printSolutionParts(self):
