@@ -30,7 +30,8 @@ if __name__ == "__main__":
     
 
     nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
-                           nodeselection.DSTMethod, nodeselection.BBSMethod
+                           nodeselection.DSTMethod, nodeselection.BBSMethod, \
+                           nodeselection.DFSandBBSMethod
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
                      branchrules.MostFractional, branchrules.MostFractionalSystematic
