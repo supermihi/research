@@ -24,6 +24,7 @@ from lpdecoding.codes.trellis cimport _INFO, _PARITY
 from lpdecoding.utils cimport StopWatch
 
 DEF EPS = 1e-10
+cdef inf = np.inf
 
 cdef inline double norm(np.double_t[:] a, int size):
     """computes the L2-norm of a[:size]"""
@@ -126,7 +127,7 @@ cdef class CSPDecoder(Decoder):
         
         cdef:
             double old_ref = 0, ref = 0, b_r, norm_a_r, delta_r
-            int k, mainIterations = 0
+            int ret, k, mainIterations = 0
             np.double_t[:] direction = self.direction, X = self.X
             np.double_t[:,:] codewords = self.codewords           
         self.majorCycles = self.minorCycles = 0
@@ -141,7 +142,10 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.k):
             direction[k] = 0
         direction[self.k] = 1
-        self.solveScalarization(direction, X, codewords[0,:])
+        if self.solveScalarization(direction, X, codewords[0,:]) == -2:
+            self.objectiveValue = inf
+            self.solution = None
+            return
         self.lenS = 1
         #  test if initial path is feasible
         if norm(X, self.k) < 1e-8:
@@ -171,7 +175,9 @@ cdef class CSPDecoder(Decoder):
                     self.cho_time += self.timer.stop()
                 # save current objective value
                 old_ref = self.current_ref
-                if not self.NearestPointAlgorithm():
+                
+                ret = self.NearestPointAlgorithm()
+                if ret == -1:
                     try:
                         self.stats["NaNs"] += 1
                     except KeyError:
@@ -179,6 +185,10 @@ cdef class CSPDecoder(Decoder):
                     print(self.objectiveValue)
                     print('NAN')
                     break
+                elif ret == -2:
+                    self.solution = None
+                    self.objectiveValue = inf
+                    return
                 #  compute intersection of hyperplane with c-axis
                 b_r = self.current_ref*X[self.k] - dot(X, X, self.k+1)
                 norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
@@ -189,7 +199,7 @@ cdef class CSPDecoder(Decoder):
                     break
                 if X[self.k] <= self.current_ref + EPS:
                     #print('INFEASIBLE')
-                    self.objectiveValue = np.inf
+                    self.objectiveValue = inf
                     self.solution = None
                     return
                 elif np.abs(ref-old_ref < EPS):
@@ -236,7 +246,7 @@ cdef class CSPDecoder(Decoder):
         except KeyError:
             self.stats["majorCycles"] = self.majorCycles
     
-    cdef bint NearestPointAlgorithm(self):
+    cdef int NearestPointAlgorithm(self):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
         P: matrix of corral points (column-wise)
@@ -395,7 +405,7 @@ cdef class CSPDecoder(Decoder):
         # translate  solution back
         X[self.k] += self.current_ref
         self.lenS = lenS
-        return (not badInstance)
+        return -1 if badInstance else 0
 
     cdef int innerLoop(self):
         """Perform the inner loop (step 2+3) of the nearest point algorithm."""
@@ -519,7 +529,7 @@ cdef class CSPDecoder(Decoder):
         self.lenS = lenS
         return 1
     
-    cdef void solveScalarization(self, np.double_t[:] direction, np.double_t[:] result, np.double_t[:] codeword):
+    cdef int solveScalarization(self, np.double_t[:] direction, np.double_t[:] result, np.double_t[:] codeword):
         """Solve the weighted sum scalarization problem, i.e. shortest path with modified cost.
         
         *direction* defines the weights for the different constraints, where direction[-1] is
@@ -536,7 +546,10 @@ cdef class CSPDecoder(Decoder):
             codeword[k] = 0
         for enc in self.code.encoders:
             c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword)
+            if c_result == inf:
+                return -2
         result[self.k] = c_result
+        return 0
     
     cdef void resetData(self, np.double_t[:] initPoint):
         """Initialize S, w, R, and P given the initial point."""

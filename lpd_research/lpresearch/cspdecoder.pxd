@@ -21,8 +21,8 @@ cdef class CSPDecoder(Decoder):
     cdef np.int_t k, lenS
     cdef bint measureTimes
     cdef double current_ref
-    cdef bint NearestPointAlgorithm(self)
-    cdef void solveScalarization(self, np.double_t[:] direction,
+    cdef int NearestPointAlgorithm(self)
+    cdef int solveScalarization(self, np.double_t[:] direction,
                                  np.double_t[:] result, np.double_t[:] codeword)
     cdef void resetData(self, np.double_t[:] initPoint) 
     cdef void updateData(self, double delta_r)
