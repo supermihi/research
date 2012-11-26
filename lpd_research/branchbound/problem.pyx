@@ -8,15 +8,22 @@ from __future__ import print_function
 import logging
 
 import numpy as np
+cimport numpy as np
 import cplex
 
+from lpdecoding.core cimport Code, Decoder
+from lpresearch cimport cspdecoder
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
 from lpdecoding.codes import turbolike, trellis
 
-class Problem(object):
+cdef class Problem(object):
     
-    solution = None
-    objectiveValue = np.inf 
+    cdef public np.ndarray solution
+    cdef public double objectiveValue
+    
+    def __init__(self):
+        self.solution = None
+        self.objectiveValue = np.inf 
     
     def solve(self):
         """Solve the current problem.
@@ -53,15 +60,18 @@ class Problem(object):
         """Set the objective function to vector *c*, a numpy array."""
         pass
 
-class CSPTurboLPProblem(Problem):
+cdef class CSPTurboLPProblem(Problem):
+    
+    cdef Code code
+    cdef Decoder decoder
+    
     def __init__(self, code):
-        from lpresearch import cspdecoder
         Problem.__init__(self)
 #        self.checkProblem = CplexTurboLPProblem(code)
         self.decoder = cspdecoder.CSPDecoder(code)
         self.code = code
         
-    def setObjectiveFunction(self, c):
+    def setObjectiveFunction(self, np.ndarray[ndim=1, dtype=np.double_t] c):
 #        self.checkProblem.setObjectiveFunction(c)
         self.decoder.llrVector = c
         self.unfixVariables(range(self.code.blocklength))
@@ -83,11 +93,11 @@ class CSPTurboLPProblem(Problem):
 #            print(self.code.encoders[1].trellis[8].fix_parity)
 #            raw_input() 
         
-    def fixVariable(self, var, value):
+    def fixVariable(self, int var, int value):
 #        self.checkProblem.fixVariable(var, value)
         self.code.fixCodeBit(var, value)
         
-    def unfixVariable(self, var):
+    def unfixVariable(self, int var):
 #        self.checkProblem.unfixVariable(var)
         self.code.fixCodeBit(var, -1)       
 

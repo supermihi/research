@@ -7,7 +7,7 @@ import numpy as np
 #default_includes = [numpy.get_include(), ".", "lpresearch"]
 #ext_modules = [Extension("lpresearch.cspdecoder", ["lpresearch/cspdecoder.pyx"], include_dirs=default_includes)]
 
-cythonModules = ['lpresearch.cspdecoder', 'pseudoweight.supportsearch']
+cythonModules = ['lpresearch.cspdecoder', 'pseudoweight.supportsearch', 'branchbound.bnb', 'branchbound.problem']
 import os.path
 def makeExtensions():
     """Returns an Extension object for the given submodule of lpdecoding."""

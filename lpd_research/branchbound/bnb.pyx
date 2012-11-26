@@ -6,19 +6,20 @@
 # published by the Free Software Foundation
 
 from __future__ import print_function
+from libc.math cimport fmin
 import numpy as np
 import logging
 
 from lpdecoding.utils import StopWatch
 
-class BranchAndBound:
+cdef class BranchAndBound:
     
     def __init__(self, problem, selectionMethod, branchRule, eps=1e-6): 
         self.problem = problem
         self.eps = eps
         self.root = Node()
         #the method used to branch at Nodes
-        self.selectionMethode = selectionMethod(self.root, self.problem)
+        self.selectionMethod = selectionMethod(self.root, self.problem)
         self.branchRule = branchRule(self.problem)
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
@@ -38,10 +39,10 @@ class BranchAndBound:
         while True:
             logging.debug('main loop iteration {}'.format(branchCount))
             logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
-            logging.debug('#active nodes: {}\n'.format(len(self.selectionMethode.activeNodes)))
+            logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
-                (activeNew, fixC, unfixC) = self.selectionMethode.getActiveNode(activeOld)
+                (activeNew, fixC, unfixC) = self.selectionMethod.getActiveNode(activeOld)
             except NodesExhausted:
                 break
             
@@ -79,13 +80,13 @@ class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    self.selectionMethode.createNodes(branchVariable, activeNew)
+                    self.selectionMethod.createNodes(branchVariable, activeNew)
                     #activeNew.child0 = Node(activeNew, branchVariable, 0)
                     #activeNew.child1 = Node(activeNew, branchVariable, 1)
                     if np.random.randint(0, 2) == 0:
-                        self.selectionMethode.addNodes(activeNew.child0,activeNew.child1)
+                        self.selectionMethod.addNodes(activeNew.child0,activeNew.child1)
                     else:
-                        self.selectionMethode.addNodes(activeNew.child1, activeNew.child0)
+                        self.selectionMethod.addNodes(activeNew.child1, activeNew.child0)
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf
@@ -94,7 +95,7 @@ class BranchAndBound:
         
         #match fix and unfix count to the selected branchMethod
         from .nodeselection import BBSMethod, DSTMethod
-        if isinstance(self.selectionMethode, BBSMethod) or isinstance(self.selectionMethode, DSTMethod):
+        if isinstance(self.selectionMethod, BBSMethod) or isinstance(self.selectionMethod, DSTMethod):
             fixCount += 2*branchCount
             unfixCount += 2*branchCount
             
@@ -113,10 +114,12 @@ class BranchAndBound:
             
     
 
-    def updBound(self, node):
+    cdef void updBound(self, Node node):
         """Updates lower and upper bounds for node and all parent nodes, if possible.
         """
-        if node.parent == None:
+        cdef:
+            double ub, lb, ubp, lbp, ubb, lbb, upper, lower
+        if node.parent is None:
             pass
         else:
             ub = node.upperb
@@ -131,8 +134,8 @@ class BranchAndBound:
             elif node.branchValue == 0:
                 ubb = node.parent.child1.upperb
                 lbb = node.parent.child1.lowerb
-            upper = min(ubb, ub)
-            lower = min(lbb, lb)
+            upper = fmin(ubb, ub)
+            lower = fmin(lbb, lb)
             #update of upper and lower bound
             if upper < ubp and lower > lbp:
                 node.parent.lowerb = lower
@@ -149,16 +152,16 @@ class NodesExhausted(Exception):
     pass
 
 
-class Node:
+cdef class Node:
     
-    def __init__(self, parent=None, branchVariable=None, branchValue=None):
-        assert branchVariable is None or branchVariable >= 0
+    def __init__(self, Node parent=None, int branchVariable=-1, int branchValue=-1):
+        assert branchVariable == -1 or branchVariable >= 0
         self.parent = parent
         self.child0 = None
         self.child1 = None
         #nec to use BestBound
         self.solution = None
-        self.objectiveValue = None
+        self.objectiveValue = np.inf
         
         self.branchVariable = branchVariable
         self.branchValue = branchValue
