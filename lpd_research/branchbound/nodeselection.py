@@ -213,7 +213,7 @@ class DFSandBBSMethod(BranchMethod):
             activeNode.objectiveValue = self.problem.objectiveValue
             #self.move(activeNode, activeOld)
             return (activeNode, fixC, unfixC)
-        else
+        else:
             try:
                 activeNode = heapq.heappop(self.activeNodes)[1]
             except IndexError:
@@ -231,7 +231,7 @@ class DFSandBBSMethod(BranchMethod):
         
     def createNodes(self, branchVariable, parent):
         if not self.FirstSolutionExists:
-            arent.child0 = Node(parent, branchVariable, 0)
+            parent.child0 = Node(parent, branchVariable, 0)
             parent.child1 = Node(parent, branchVariable, 1)
         else:
             parent.child0 = Node(parent, branchVariable, 0)
@@ -247,23 +247,23 @@ class DFSandBBSMethod(BranchMethod):
             parent.child1.objectiveValue = self.problem.objectiveValue
             self.problem.unfixVariable(branchVariable)
             
-    def refreshActiveNodes(self, oldNode):
+    def refreshActiveNodes(self, activeOld):
         newNodes = []
-        old = oldNode
+        oldNode = activeOld
         unfixC = 0
         moveC = 0
         fixC = 0
         for i in self.activeNodes:
-            (fixCount, unfixCount) = move(oldNode, i)
+            (fixCount, unfixCount) = self.move(activeOld, i)
             unfixC += unfixCount
             fixC += fixCount
             moveC += 1
             self.problem.solve()
-            i.solution = self.problem.solition
+            i.solution = self.problem.solution
             i.objectiveValue = self.problem.objectiveValue
             heapq.heappush(newNodes, (i.lowerb, i))
-            oldNode = i
-        (fixCount, unfixCount) = move(oldNode, old)
+            activeOld = i
+        (fixCount, unfixCount) = self.move(activeOld, oldNode)
         unfixC += unfixCount
         fixC += fixCount            
         moveC += 1
