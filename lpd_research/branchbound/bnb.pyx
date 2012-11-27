@@ -64,6 +64,8 @@ cdef class BranchAndBound:
                     if self.optimalObjectiveValue > activeNew.objectiveValue:
                         if self.optimalSolution is None:
                             logging.info("first feasible solution after {} steps".format(branchCount))
+                            self.selectionMethode.firstSolutionExists = True
+                            self.selectionMethode.refreshActiveNodes()
                         # found new global optimum
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
