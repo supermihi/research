@@ -15,6 +15,10 @@ class BranchMethod:
     def __init__(self, rootNode, problem):
         self.root = rootNode
         self.problem = problem
+        self.FirstSolutionExists = False
+        
+    def refreshActiveNodes(self, activeOld):
+        pass
     
     def getActiveNode(self, activeOld):
         """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
@@ -189,3 +193,79 @@ class DSTMethod(BranchMethod):
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
         self.problem.unfixVariable(branchVariable) 
+        
+
+class DFSandBBSMethod(BranchMethod):
+
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
+        self.activeNodes = deque ( [rootNode])
+
+    def getActiveNode(self, activeOld):
+        if not self.FirstSolutionExists:
+            try:
+                activeNode = self.activeNodes.pop()
+            except IndexError:
+                raise NodesExhausted()
+            (fixC, unfixC) = self.move(activeOld, activeNode)
+            self.problem.solve()
+            activeNode.solution = self.problem.solution
+            activeNode.objectiveValue = self.problem.objectiveValue
+            #self.move(activeNode, activeOld)
+            return (activeNode, fixC, unfixC)
+        else
+            try:
+                activeNode = heapq.heappop(self.activeNodes)[1]
+            except IndexError:
+                raise NodesExhausted()
+            (fixC, unfixC) = self.move(activeOld, activeNode)
+            return (activeNode, fixC, unfixC)
+        
+    def addNodes(self, node0, node1):
+        if not self.FirstSolutionExists:
+            self.activeNodes.append(node1)
+            self.activeNodes.append(node0)
+        else:
+            heapq.heappush(self.activeNodes, (node0.lowerb, node0))
+            heapq.heappush(self.activeNodes, (node1.lowerb, node1))
+        
+    def createNodes(self, branchVariable, parent):
+        if not self.FirstSolutionExists:
+            arent.child0 = Node(parent, branchVariable, 0)
+            parent.child1 = Node(parent, branchVariable, 1)
+        else:
+            parent.child0 = Node(parent, branchVariable, 0)
+            self.problem.fixVariable(branchVariable, 0)
+            self.problem.solve()
+            parent.child0.solution = self.problem.solution
+            parent.child0.objectiveValue = self.problem.objectiveValue
+            self.problem.unfixVariable(branchVariable)
+            parent.child1 = Node(parent, branchVariable, 1)
+            self.problem.fixVariable(branchVariable, 1)
+            self.problem.solve()
+            parent.child1.solution = self.problem.solution
+            parent.child1.objectiveValue = self.problem.objectiveValue
+            self.problem.unfixVariable(branchVariable)
+            
+    def refreshActiveNodes(self, oldNode):
+        newNodes = []
+        old = oldNode
+        unfixC = 0
+        moveC = 0
+        fixC = 0
+        for i in self.activeNodes:
+            (fixCount, unfixCount) = move(oldNode, i)
+            unfixC += unfixCount
+            fixC += fixCount
+            moveC += 1
+            self.problem.solve()
+            i.solution = self.problem.solition
+            i.objectiveValue = self.problem.objectiveValue
+            heapq.heappush(newNodes, (i.lowerb, i))
+            oldNode = i
+        (fixCount, unfixCount) = move(oldNode, old)
+        unfixC += unfixCount
+        fixC += fixCount            
+        moveC += 1
+        return (fixC, unfixC, moveC)
+    
