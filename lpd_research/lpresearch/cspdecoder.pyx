@@ -24,7 +24,7 @@ from lpdecoding.codes.trellis cimport _INFO, _PARITY
 from lpdecoding.utils cimport StopWatch
 
 DEF EPS = 1e-10
-cdef inf = np.inf
+cdef double inf = np.inf
 
 cdef inline double norm(np.double_t[:] a, int size):
     """computes the L2-norm of a[:size]"""
@@ -202,7 +202,7 @@ cdef class CSPDecoder(Decoder):
                     self.objectiveValue = inf
                     self.solution = None
                     return
-                elif np.abs(ref-old_ref < EPS):
+                elif abs(ref-old_ref) < EPS:
                     #self.objectiveValue = ref
                     break
                 self.objectiveValue = self.current_ref = ref #  update reference point 
@@ -619,14 +619,6 @@ cdef class CSPDecoder(Decoder):
             for k in range(self.lenS):
                 solution[i] += w[S[k]]*codewords[S[k],i]
         self.solution = solution
-
-    def printSolutionParts(self):
-        for k in range(self.lenS):
-            print(np.asarray(self.paths[self.S[k],:], dtype=np.int), self.P[self.k, self.S[k]])
-        print('')
-        for k in range(self.lenS):
-            print(self.code.encode(np.asarray(self.paths[self.S[k],:], dtype=np.int)))
-        
     
     cpdef params(self):
         return OrderedDict([("name", self.name),

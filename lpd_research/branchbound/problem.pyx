@@ -62,8 +62,8 @@ cdef class Problem(object):
 
 cdef class CSPTurboLPProblem(Problem):
     
-    cdef Code code
-    cdef Decoder decoder
+    cdef public Code code
+    cdef public Decoder decoder
     
     def __init__(self, code):
         Problem.__init__(self)
