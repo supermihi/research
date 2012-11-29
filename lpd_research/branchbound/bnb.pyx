@@ -82,6 +82,7 @@ cdef class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
+                    #TODO: fix und unfixcount bei createNodes hinzufüen
                     self.selectionMethod.createNodes(branchVariable, activeNew)
                     #activeNew.child0 = Node(activeNew, branchVariable, 0)
                     #activeNew.child1 = Node(activeNew, branchVariable, 1)

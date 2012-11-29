@@ -30,7 +30,7 @@ if __name__ == "__main__":
     
 
     nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
-                           nodeselection.DSTMethod, nodeselection.BBSMethod
+                           nodeselection.DSTMethod, nodeselection.BBSMethod, \
                            nodeselection.DFSandBBSMethod
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
@@ -38,7 +38,7 @@ if __name__ == "__main__":
                      
     #seed = np.random.randint(9999999)
     seed = 9864950
-    numberOfTrials = 10
+    numberOfTrials = 1
     #seed = 3977440
     np.random.seed(seed)
     attrs = "fixCount", "moveCount", "branchCount", "time"
@@ -46,10 +46,11 @@ if __name__ == "__main__":
         locals()[attr+"s"] = {}
         for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
             locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] = 0
-        
+    
     for i in range(numberOfTrials):
+        llr = np.random.standard_normal(code.blocklength)
         for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
-            llr = np.random.standard_normal(code.blocklength)
+            #llr = np.random.standard_normal(code.blocklength)
             #problem = bnbproblem.CplexTurboLPProblem(code)
             problem = bnbproblem.CSPTurboLPProblem(code)
             problem.setObjectiveFunction(llr)

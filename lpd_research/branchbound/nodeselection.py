@@ -16,9 +16,10 @@ class BranchMethod:
         self.root = rootNode
         self.problem = problem
         self.FirstSolutionExists = False
+        self.lpTime = 0
         
     def refreshActiveNodes(self, activeOld):
-        pass
+        return (0,0,0)
     
     def getActiveNode(self, activeOld):
         """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
