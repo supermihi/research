@@ -24,6 +24,7 @@ if __name__ == "__main__":
     size = int(sys.argv[1])
     logging.basicConfig(level=logging.INFO)
     random.seed(192837)
+    cplexTime= 0
     interleaver = Interleaver.random(size)
     code = StandardTurboCode(LTEEncoder(), interleaver, "smallTestCode")
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
@@ -49,6 +50,9 @@ if __name__ == "__main__":
     
     for i in range(numberOfTrials):
         llr = np.random.standard_normal(code.blocklength)
+        with stopwatch() as timer:
+            checkDecoder.decode(llr)
+        cplexTime += timer.duration
         for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
             #llr = np.random.standard_normal(code.blocklength)
             #problem = bnbproblem.CplexTurboLPProblem(code)
@@ -58,7 +62,6 @@ if __name__ == "__main__":
             solution = algo.run()
             for attr in attrs:
                 locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] += getattr(algo, attr)
-            checkDecoder.decode(llr)
             if np.allclose(checkDecoder.solution, solution):
                 print("method {}/{} okay".format(nsMethod, bRule))
                 print("\toptimal value={}".format(algo.optimalObjectiveValue))
@@ -83,3 +86,4 @@ if __name__ == "__main__":
     pprint.pprint(branchCounts)
     print("times:")
     pprint.pprint(times)
+    print("cplexTime: {}".format(cplexTime))

@@ -66,6 +66,9 @@ cdef class BranchAndBound:
                             logging.info("first feasible solution after {} steps".format(branchCount))
                             self.selectionMethod.firstSolutionExists = True
                             (fixC, unfixC, moveC) = self.selectionMethod.refreshActiveNodes(activeNew)
+                            fixCount += fixC
+                            unfixCount += unfixC
+                            moveCount += moveC
                         # found new global optimum
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
@@ -82,10 +85,9 @@ cdef class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    #TODO: fix und unfixcount bei createNodes hinzufüen
-                    self.selectionMethod.createNodes(branchVariable, activeNew)
-                    #activeNew.child0 = Node(activeNew, branchVariable, 0)
-                    #activeNew.child1 = Node(activeNew, branchVariable, 1)
+                    (fixC, unfixC) = self.selectionMethod.createNodes(branchVariable, activeNew)
+                    fixCount += fixC
+                    unfixCount += unfixC
                     if np.random.randint(0, 2) == 0:
                         self.selectionMethod.addNodes(activeNew.child0,activeNew.child1)
                     else:
@@ -96,11 +98,6 @@ cdef class BranchAndBound:
                 self.updBound(activeNew)
             activeOld = activeNew
         
-        #match fix and unfix count to the selected branchMethod
-        from .nodeselection import BBSMethod, DSTMethod
-        if isinstance(self.selectionMethod, BBSMethod) or isinstance(self.selectionMethod, DSTMethod):
-            fixCount += 2*branchCount
-            unfixCount += 2*branchCount
             
         self.moveCount = moveCount
         self.fixCount = fixCount

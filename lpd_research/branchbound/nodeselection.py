@@ -89,6 +89,7 @@ class BFSMethod(BranchMethod):
     def createNodes(self, branchVariable, parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
+        return (0, 0)
         
         
         
@@ -117,6 +118,7 @@ class DFSMethod(BranchMethod):
     def createNodes(self, branchVariable, parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
+        return (0, 0)
         
     
         
@@ -153,7 +155,8 @@ class BBSMethod(BranchMethod):
         self.problem.solve()
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
-        self.problem.unfixVariable(branchVariable)              
+        self.problem.unfixVariable(branchVariable)
+        return (2, 2)              
 
 #DeepSeaTroll Search Method        
 class DSTMethod(BranchMethod):
@@ -194,6 +197,7 @@ class DSTMethod(BranchMethod):
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
         self.problem.unfixVariable(branchVariable) 
+        return (2, 2)
         
 
 class DFSandBBSMethod(BranchMethod):
@@ -234,6 +238,7 @@ class DFSandBBSMethod(BranchMethod):
         if not self.FirstSolutionExists:
             parent.child0 = Node(parent, branchVariable, 0)
             parent.child1 = Node(parent, branchVariable, 1)
+            return (0,0)
         else:
             parent.child0 = Node(parent, branchVariable, 0)
             self.problem.fixVariable(branchVariable, 0)
@@ -247,6 +252,7 @@ class DFSandBBSMethod(BranchMethod):
             parent.child1.solution = self.problem.solution
             parent.child1.objectiveValue = self.problem.objectiveValue
             self.problem.unfixVariable(branchVariable)
+            return (0,0)
             
     def refreshActiveNodes(self, activeOld):
         newNodes = []
