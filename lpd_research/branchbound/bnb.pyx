@@ -104,6 +104,9 @@ cdef class BranchAndBound:
         self.unfixCount = unfixCount
         self.branchCount = branchCount
         self.time = timer.stop()
+        self.lpTime = self.selectionMethod.lpTime
+        #to measure the time used for solving lps in percent
+        self.lpVsAll = self.lpTime / (self.time + self.lpTime)
         logging.debug("******* optimal solution found *******")
         logging.debug(self.optimalSolution)
         logging.debug(self.optimalObjectiveValue)

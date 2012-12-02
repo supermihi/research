@@ -10,6 +10,8 @@ cdef class BranchAndBound:
         public double optimalObjectiveValue
         public int moveCount, branchCount, fixCount, unfixCount
         public double time
+        public double lpTime
+        public double lpVsAll
     
     cdef void updBound(self, Node node)
 

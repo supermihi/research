@@ -9,6 +9,7 @@ from __future__ import absolute_import
 from collections import deque
 import heapq
 from .bnb import Node, NodesExhausted
+from lpdecoding.utils import stopwatch
 
 class BranchMethod:
     
@@ -75,7 +76,9 @@ class BFSMethod(BranchMethod):
         except IndexError:
             raise NodesExhausted()
         (fixC, unfixC) = self.move(activeOld, activeNode)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
         #self.move(activeNode, activeOld)
@@ -105,7 +108,9 @@ class DFSMethod(BranchMethod):
         except IndexError:
             raise NodesExhausted()
         (fixC, unfixC) = self.move(activeOld, activeNode)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
         #self.move(activeNode, activeOld)
@@ -126,7 +131,9 @@ class BBSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.root.lowerb = self.problem.objectiveValue
         self.activeNodes = [ (rootNode.lowerb, rootNode) ]
@@ -146,13 +153,17 @@ class BBSMethod(BranchMethod):
     def createNodes(self, branchVariable, parent):
         parent.child0 = Node(parent, branchVariable, 0)
         self.problem.fixVariable(branchVariable, 0)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
         self.problem.unfixVariable(branchVariable)
@@ -164,7 +175,9 @@ class DSTMethod(BranchMethod):
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque([rootNode])
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.problem.objectiveValue
         
@@ -187,13 +200,17 @@ class DSTMethod(BranchMethod):
     def createNodes(self, branchVariable, parent):
         parent.child0 = Node(parent, branchVariable, 0)
         self.problem.fixVariable(branchVariable, 0)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
-        self.problem.solve()
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
         self.problem.unfixVariable(branchVariable) 
@@ -213,7 +230,9 @@ class DFSandBBSMethod(BranchMethod):
             except IndexError:
                 raise NodesExhausted()
             (fixC, unfixC) = self.move(activeOld, activeNode)
-            self.problem.solve()
+            with stopwatch() as timer:
+                self.problem.solve()
+            self.lpTime += timer.duration
             activeNode.solution = self.problem.solution
             activeNode.objectiveValue = self.problem.objectiveValue
             #self.move(activeNode, activeOld)
@@ -242,13 +261,17 @@ class DFSandBBSMethod(BranchMethod):
         else:
             parent.child0 = Node(parent, branchVariable, 0)
             self.problem.fixVariable(branchVariable, 0)
-            self.problem.solve()
+            with stopwatch() as timer:
+                self.problem.solve()
+            self.lpTime += timer.duration
             parent.child0.solution = self.problem.solution
             parent.child0.objectiveValue = self.problem.objectiveValue
             self.problem.unfixVariable(branchVariable)
             parent.child1 = Node(parent, branchVariable, 1)
             self.problem.fixVariable(branchVariable, 1)
-            self.problem.solve()
+            with stopwatch() as timer:
+                self.problem.solve()
+            self.lpTime += timer.duration
             parent.child1.solution = self.problem.solution
             parent.child1.objectiveValue = self.problem.objectiveValue
             self.problem.unfixVariable(branchVariable)
@@ -265,7 +288,9 @@ class DFSandBBSMethod(BranchMethod):
             unfixC += unfixCount
             fixC += fixCount
             moveC += 1
-            self.problem.solve()
+            with stopwatch() as timer:
+                self.problem.solve()
+            self.lpTime += timer.duration
             i.solution = self.problem.solution
             i.objectiveValue = self.problem.objectiveValue
             heapq.heappush(newNodes, (i.lowerb, i))
