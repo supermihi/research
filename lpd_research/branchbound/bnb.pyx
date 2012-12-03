@@ -86,12 +86,9 @@ cdef class BranchAndBound:
                 else:
                     #create children with branchValue and add them to the activeNodes-list
                     (fixC, unfixC) = self.selectionMethod.createNodes(branchVariable, activeNew)
+                    self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
                     fixCount += fixC
                     unfixCount += unfixC
-                    if np.random.randint(0, 2) == 0:
-                        self.selectionMethod.addNodes(activeNew.child0,activeNew.child1)
-                    else:
-                        self.selectionMethod.addNodes(activeNew.child1, activeNew.child0)
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf

@@ -35,36 +35,38 @@ if __name__ == "__main__":
 
     nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
                            nodeselection.DSTMethod, nodeselection.BBSMethod, \
-                           nodeselection.DFSandBBSMethod
+                           nodeselection.DFSandBBSMethod, nodeselection.DFSRandom, \
+                           nodeselection.DFSRound
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
                      branchrules.MostFractional, branchrules.MostFractionalSystematic
     #initialize xls
     stats = Workbook()
-    branchCounts = stats.add_sheet('BranchCounts')
-    fixCounts = stats.add_sheet('FixCounts')
-    unfixCounts = stats.add_sheet('UnfixCounts')
-    moveCounts = stats.add_sheet('moveCounts')
-    times = stats.add_sheet('Times')
-    sheets = [branchCounts, fixCounts, unfixCounts, times]
+    branchCountsXls = stats.add_sheet('BranchCounts')
+    fixCountsXls = stats.add_sheet('FixCounts')
+    unfixCountsXls = stats.add_sheet('UnfixCounts')
+    moveCountsXls = stats.add_sheet('moveCounts')
+    timesXls = stats.add_sheet('Times')
+    #sheets = [branchCounts, fixCounts, unfixCounts, times]
     
     for (i,nsMethod) in enumerate(nodeSelectionMethods):
 #        for sheet in sheets:
 #            sheet.write(0,i*len(branchingRules), nsMethod.__name__)
-        branchCounts.write(0,i*len(branchingRules), nsMethod.__name__)
-        fixCounts.write(0,i*len(branchingRules), nsMethod.__name__)
-        unfixCounts.write(0,i*len(branchingRules), nsMethod.__name__)
-        moveCounts.write(0,i*len(branchingRules), nsMethod.__name__)
-        times.write(0,i*len(branchingRules), nsMethod.__name__)
+        branchCountsXls.write(0,i*len(branchingRules), nsMethod.__name__)
+        fixCountsXls.write(0,i*len(branchingRules), nsMethod.__name__)
+        unfixCountsXls.write(0,i*len(branchingRules), nsMethod.__name__)
+        moveCountsXls.write(0,i*len(branchingRules), nsMethod.__name__)
+        timesXls.write(0,i*len(branchingRules), nsMethod.__name__)
         for (j,bRule) in enumerate(branchingRules):
 #            for sheet in sheets:
 #                sheet.write(0,i*len(branchingRules), nsMethod.__name__)
-            branchCounts.write(1,i*len(branchingRules)+j, bRule.__name__)
-            fixCounts.write(1,i*len(branchingRules)+j, bRule.__name__)
-            unfixCounts.write(1,i*len(branchingRules)+j, bRule.__name__)
-            moveCounts.write(1,i*len(branchingRules)+j, bRule.__name__)
-            times.write(1,i*len(branchingRules)+j, bRule.__name__)
-    times.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
+            branchCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
+            fixCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
+            unfixCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
+            moveCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
+            timesXls.write(1,i*len(branchingRules)+j, bRule.__name__)
+    timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
+    timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+2, 'Seed')
     #stats.save('stats.xls') 
                        
     seed = np.random.randint(9999999)
@@ -79,10 +81,11 @@ if __name__ == "__main__":
     
     for i in range(numberOfTrials):
         llr = np.random.standard_normal(code.blocklength)
+        timesXls.write(2*i+2,len(nodeSelectionMethods)*len(branchingRules)+2, "{}".format(seed) )
         with stopwatch() as timer:
             checkDecoder.decode(llr)
         cplexTime += timer.duration
-        stats.get_sheet(4).write(i+2,len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(timer.duration))
+        timesXls.write(2*i+2,len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(timer.duration))
         for (j, (nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
             #llr = np.random.standard_normal(code.blocklength)
             #problem = bnbproblem.CplexTurboLPProblem(code)
@@ -90,15 +93,16 @@ if __name__ == "__main__":
             problem.setObjectiveFunction(llr)
             algo = bnb.BranchAndBound(problem, eps=1e-10, branchRule=bRule, selectionMethod=nsMethod)
             solution = algo.run()
-            stats.get_sheet(0).write(i+2, j, "{}".format(algo.branchCount))
-            stats.get_sheet(1).write(i+2, j, "{}".format(algo.fixCount))
-            stats.get_sheet(2).write(i+2, j, "{}".format(algo.unfixCount))
-            stats.get_sheet(3).write(i+2, j, "{}".format(algo.moveCount))
-            stats.get_sheet(4).write(i+2, j, "{}".format(algo.time))
+            branchCountsXls.write(i+2, j, "{}".format(algo.branchCount))
+            fixCountsXls.write(i+2, j, "{}".format(algo.fixCount))
+            unfixCountsXls.write(i+2, j, "{}".format(algo.unfixCount))
+            moveCountsXls.write(i+2, j, "{}".format(algo.moveCount))
+            timesXls.write(2*i+2, j, "{}".format(algo.time))
+            timesXls.write(2*i+3, j, "{} ({})".format(algo.lpTime, round(algo.lpVsAll,2)))
             for attr in attrs:
                 locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] += getattr(algo, attr)
             if np.allclose(checkDecoder.solution, solution):
-                print("method {}/{} okay".format(nsMethod, bRule))
+                print("method {}/{} okay".format(nsMethod.__name__, bRule.__name__))
                 print("\toptimal value={}".format(algo.optimalObjectiveValue))
             else:
                 print("method {}/{} wrong solution:".format(nsMethod, bRule))
@@ -109,18 +113,19 @@ if __name__ == "__main__":
             print("\tbranch count={}".format(algo.branchCount))
             print("\tmove count={}".format(algo.moveCount))
             print("\tfix count={}".format(algo.fixCount))
+            print("\tunfix count={}".format(algo.unfixCount))
     for attr in attrs:
         for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
             locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] /= numberOfTrials
     j = numberOfTrials + 3
-    for (i,(nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
-        stats.get_sheet(0).write(j,i, "{}".format(branchCounts))
-        stats.get_sheet(1).write(j,i, "{}".format(fixCounts))
-        stats.get_sheet(2).write(j,i, "{}".format(unfixCounts))
-        stats.get_sheet(3).write(j, i, "{}".format(moveCounts))
-        stats.get_sheet(4).write(j, i, "{}".format(times))
+#    for (i,(nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
+#        stats.get_sheet(0).write(j,i, "{}".format(branchCounts[i]))
+#        stats.get_sheet(1).write(j,i, "{}".format(fixCounts[i]))
+#        stats.get_sheet(2).write(j,i, "{}".format(unfixCounts[i]))
+#        stats.get_sheet(3).write(j, i, "{}".format(moveCounts[i]))
+#        stats.get_sheet(4).write(j, i, "{}".format(times[i]))
     cplexTime /= numberOfTrials
-    stats.get_sheet(4).write(j, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
+#    stats.get_sheet(4).write(j, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
     import pprint
     print("move counts:")
     pprint.pprint(moveCounts)
@@ -130,7 +135,7 @@ if __name__ == "__main__":
     pprint.pprint(branchCounts)
     print("times:")
     pprint.pprint(times)
+    print("cplexTime: {}".format(cplexTime))
     print("lpVsAlls:")
     pprint.pprint(lpVsAlls)
-    print("cplexTime: {}".format(cplexTime))
     stats.save('stats.xls')
