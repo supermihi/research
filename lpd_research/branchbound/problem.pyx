@@ -18,14 +18,11 @@ from lpdecoding.codes import turbolike, trellis
 
 cdef class Problem(object):
     
-    cdef public np.ndarray solution
-    cdef public double objectiveValue
-    
     def __init__(self):
         self.solution = None
         self.objectiveValue = np.inf 
     
-    def solve(self):
+    cpdef solve(self):
         """Solve the current problem.
         
         After solving, attributes *solution* and *objectiveValue* are available. If the
@@ -62,21 +59,18 @@ cdef class Problem(object):
 
 cdef class CSPTurboLPProblem(Problem):
     
-    cdef public Code code
-    cdef public Decoder decoder
-    
     def __init__(self, code):
         Problem.__init__(self)
 #        self.checkProblem = CplexTurboLPProblem(code)
         self.decoder = cspdecoder.CSPDecoder(code)
         self.code = code
         
-    def setObjectiveFunction(self, np.ndarray[ndim=1, dtype=np.double_t] c):
+    cpdef setObjectiveFunction(self, np.ndarray[ndim=1, dtype=np.double_t] c):
 #        self.checkProblem.setObjectiveFunction(c)
         self.decoder.llrVector = c
         self.unfixVariables(range(self.code.blocklength))
         
-    def solve(self):
+    cpdef solve(self):
 #        self.checkProblem.solve()        
         self.decoder.solve()
         self.objectiveValue = self.decoder.objectiveValue
