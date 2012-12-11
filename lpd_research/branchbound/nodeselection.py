@@ -95,7 +95,81 @@ class BFSMethod(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
         
+class BFSRandom(BranchMethod):
+    
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
+        self.activeNodes = deque( [rootNode] )
         
+    def getActiveNode(self, activeOld):
+        try:
+            activeNode = self.activeNodes.popleft()
+        except IndexError:
+            raise NodesExhausted()
+        (fixC, unfixC) = self.move(activeOld, activeNode)
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
+        activeNode.solution = self.problem.solution
+        activeNode.objectiveValue = self.problem.objectiveValue
+        #self.move(activeNode, activeOld)
+        return (activeNode, fixC, unfixC)
+        
+    
+    def addNodes(self, node0, node1):
+        if np.random.randint(0, 2) == 0:
+            self.activeNodes.append(node1)
+            self.activeNodes.append(node0)
+        else:
+            self.activeNodes.append(node0)
+            self.activeNodes.append(node1)
+        
+    def createNodes(self, branchVariable, parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        parent.child1 = Node(parent, branchVariable, 1)
+        return (0, 0)
+    
+class BFSRound(BranchMethod):
+    
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
+        self.activeNodes = deque( [rootNode] )
+        
+    def getActiveNode(self, activeOld):
+        try:
+            activeNode = self.activeNodes.popleft()
+        except IndexError:
+            raise NodesExhausted()
+        (fixC, unfixC) = self.move(activeOld, activeNode)
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
+        activeNode.solution = self.problem.solution
+        activeNode.objectiveValue = self.problem.objectiveValue
+        #self.move(activeNode, activeOld)
+        return (activeNode, fixC, unfixC)
+        
+    
+    def addNodes(self, node0, node1):
+        k = node0.parent.solution[node0.branchVariable]
+        if k > 0.5:
+            self.activeNodes.append(node1)
+            self.activeNodes.append(node0)
+        elif k < 0.5:
+            self.activeNodes.append(node0)
+            self.activeNodes.append(node1)
+        elif k == 0.5:
+            if np.random.randint(0, 2) == 0:
+                self.activeNodes.append(node1)
+                self.activeNodes.append(node0)
+            else:
+                self.activeNodes.append(node0)
+                self.activeNodes.append(node1)
+        
+    def createNodes(self, branchVariable, parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        parent.child1 = Node(parent, branchVariable, 1)
+        return (0, 0) 
         
 class DFSMethod(BranchMethod):
     
