@@ -4,8 +4,6 @@ from setuptools import setup
 #from Cython.Distutils import build_ext
 from Cython.Build import cythonize
 import numpy as np
-#default_includes = [numpy.get_include(), ".", "lpresearch"]
-#ext_modules = [Extension("lpresearch.cspdecoder", ["lpresearch/cspdecoder.pyx"], include_dirs=default_includes)]
 
 cythonModules = ['lpresearch.cspdecoder', 'pseudoweight.supportsearch', 'branchbound.bnb', 'branchbound.problem']
 import os.path
