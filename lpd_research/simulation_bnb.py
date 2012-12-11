@@ -33,10 +33,12 @@ if __name__ == "__main__":
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
 
-    nodeSelectionMethods = nodeselection.BFSMethod, nodeselection.DFSMethod, \
-                           nodeselection.DSTMethod, nodeselection.BBSMethod, \
-                           nodeselection.DFSandBBSMethod, nodeselection.DFSRandom, \
-                           nodeselection.DFSRound
+    nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
+                           nodeselection.BFSRandom, nodeselection.BFSRound, \
+                           nodeselection.DFSMethod, nodeslection.DFSRandom, \
+                           nodeselection.DFSRound, nodeselection.DSTMethod, \
+                           nodeselection.DFSandBBSMethod
+                           
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
                      branchrules.MostFractional, branchrules.MostFractionalSystematic
@@ -73,7 +75,7 @@ if __name__ == "__main__":
     #seed = 9864950
     #seed = 3977440
     np.random.seed(seed)
-    attrs = "branchCount", "fixCount", "unfixCount", "moveCount", "time", "lpVsAll" 
+    attrs = "branchCount", "fixCount", "unfixCount", "moveCount", "time", "lpTime", "lpVsAll" 
     for attr in attrs:
         locals()[attr+"s"] = {}
         for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
@@ -118,14 +120,17 @@ if __name__ == "__main__":
         for nsMethod, bRule in itertools.product(nodeSelectionMethods, branchingRules):
             locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] /= numberOfTrials
     j = numberOfTrials + 3
-#    for (i,(nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
-#        stats.get_sheet(0).write(j,i, "{}".format(branchCounts[i]))
-#        stats.get_sheet(1).write(j,i, "{}".format(fixCounts[i]))
-#        stats.get_sheet(2).write(j,i, "{}".format(unfixCounts[i]))
-#        stats.get_sheet(3).write(j, i, "{}".format(moveCounts[i]))
-#        stats.get_sheet(4).write(j, i, "{}".format(times[i]))
+    for (i,(nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
+        #argument = '("{}", "{}")'.format(nsMethod.__name__, bRule.__name__)
+        argument = ("{}".format(nsMethod.__name__), "{}".format(bRule.__name__))
+        branchCountsXls.write(j,i, "{}".format(branchCounts[argument]))
+        fixCountsXls.write(j,i, "{}".format(fixCounts[argument]))
+        unfixCountsXls.write(j,i, "{}".format(unfixCounts[argument]))
+        moveCountsXls.write(j, i, "{}".format(moveCounts[argument]))
+        timesXls.write(2*numberOfTrials + 3, i, "{}".format(times[argument]))
+        timesXls.write(2*numberOfTrials + 4, i, "{} ({})".format(lpTimes[argument], round(lpVsAlls[argument], 2)))
     cplexTime /= numberOfTrials
-#    stats.get_sheet(4).write(j, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
+    timesXls.write(2*numberOfTrials + 3, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
     import pprint
     print("move counts:")
     pprint.pprint(moveCounts)
