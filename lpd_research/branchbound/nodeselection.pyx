@@ -12,7 +12,7 @@ from .bnb import Node, NodesExhausted
 from lpdecoding.utils import stopwatch
 import numpy as np
 
-class BranchMethod:
+cdef class BranchMethod:
     
     def __init__(self, rootNode, problem):
         self.root = rootNode
@@ -20,7 +20,7 @@ class BranchMethod:
         self.FirstSolutionExists = False
         self.lpTime = 0
         
-    def refreshActiveNodes(self, activeOld):
+    cdef (int, int, int) refreshActiveNodes(self, Node activeOld):
         return (0,0,0)
     
     def getActiveNode(self, activeOld):
@@ -33,9 +33,11 @@ class BranchMethod:
     def createNodes(self, branchVariable, parent):
         pass
     
-    def move(self, fromNode, toNode):
+    cdef (int, int) move(self,Node fromNode, Node toNode):
         """Moves problem from fromNode to toNode.
         """
+        cdef:
+            int unfixCount, fixCount
         unfixCount = 0
         fixCount = 0
         fix = []
@@ -65,13 +67,16 @@ class BranchMethod:
         return (fixCount, unfixCount)
 
 
-class BFSMethod(BranchMethod):
+cdef class BFSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque( [rootNode] )
         
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            int fixC, unfixC
+            Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
         except IndexError:
@@ -86,22 +91,25 @@ class BFSMethod(BranchMethod):
         return (activeNode, fixC, unfixC)
         
     
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
         
-class BFSRandom(BranchMethod):
+cdef class BFSRandom(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque( [rootNode] )
         
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            int fixC, unfixC
+            Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
         except IndexError:
@@ -116,20 +124,20 @@ class BFSRandom(BranchMethod):
         return (activeNode, fixC, unfixC)
         
     
-    def addNodes(self, node0, node1):
-        if np.random.randint(0, 2) == 0:
+    cdef void addNodes(self, Node node0, Node node1):
+        if int np.random.randint(0, 2) == 0:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
         else:
             self.activeNodes.append(node0)
             self.activeNodes.append(node1)
         
-    def createNodes(self, branchVariable, parent):
+    def (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
     
-class BFSRound(BranchMethod):
+cdef class BFSRound(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -171,7 +179,7 @@ class BFSRound(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0) 
         
-class DFSMethod(BranchMethod):
+cdef class DFSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -200,7 +208,7 @@ class DFSMethod(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
         
-class DFSRandom(BranchMethod):
+cdef class DFSRandom(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -233,7 +241,7 @@ class DFSRandom(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
     
-class DFSRound(BranchMethod):
+cdef class DFSRound(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -275,7 +283,7 @@ class DFSRound(BranchMethod):
         return (0, 0)
         
         
-class BBSMethod(BranchMethod):
+cdef class BBSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -318,7 +326,7 @@ class BBSMethod(BranchMethod):
         return (2, 2)              
 
 #DeepSeaTroll Search Method        
-class DSTMethod(BranchMethod):
+cdef class DSTMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -365,7 +373,7 @@ class DSTMethod(BranchMethod):
         return (2, 2)
         
 
-class DFSandBBSMethod(BranchMethod):
+cdef class DFSandBBSMethod(BranchMethod):
 
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)

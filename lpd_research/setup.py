@@ -5,7 +5,7 @@ from setuptools import setup
 from Cython.Build import cythonize
 import numpy as np
 
-cythonModules = ['lpresearch.cspdecoder', 'pseudoweight.supportsearch', 'branchbound.bnb', 'branchbound.problem']
+cythonModules = ['lpresearch.cspdecoder', 'pseudoweight.supportsearch', 'branchbound.bnb', 'branchbound.problem', 'branchbound.nodeselection']
 import os.path
 def makeExtensions():
     """Returns an Extension object for the given submodule of lpdecoding."""

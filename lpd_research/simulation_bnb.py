@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
                            nodeselection.BFSRandom, nodeselection.BFSRound, \
-                           nodeselection.DFSMethod, nodeslection.DFSRandom, \
+                           nodeselection.DFSMethod, nodeselection.DFSRandom, \
                            nodeselection.DFSRound, nodeselection.DSTMethod, \
                            nodeselection.DFSandBBSMethod
                            
