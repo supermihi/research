@@ -132,7 +132,7 @@ cdef class BFSRandom(BranchMethod):
             self.activeNodes.append(node0)
             self.activeNodes.append(node1)
         
-    def (int, int) createNodes(self, int branchVariable, Node parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
@@ -143,7 +143,10 @@ cdef class BFSRound(BranchMethod):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque( [rootNode] )
         
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            int fixC, unfixC
+            Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
         except IndexError:
@@ -158,7 +161,9 @@ cdef class BFSRound(BranchMethod):
         return (activeNode, fixC, unfixC)
         
     
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
+        cdef:
+            int k
         k = node0.parent.solution[node0.branchVariable]
         if k > 0.5:
             self.activeNodes.append(node1)
@@ -174,7 +179,7 @@ cdef class BFSRound(BranchMethod):
                 self.activeNodes.append(node0)
                 self.activeNodes.append(node1)
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0) 
@@ -185,7 +190,10 @@ cdef class DFSMethod(BranchMethod):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque ( [rootNode])
 
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+            int fixC, unfixC
         try:
             activeNode = self.activeNodes.pop()
         except IndexError:
@@ -199,11 +207,11 @@ cdef class DFSMethod(BranchMethod):
         #self.move(activeNode, activeOld)
         return (activeNode, fixC, unfixC)
         
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         self.activeNodes.append(node1)
         self.activeNodes.append(node0)
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
@@ -214,7 +222,10 @@ cdef class DFSRandom(BranchMethod):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque ( [rootNode])
 
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+            int fixC, unfixC
         try:
             activeNode = self.activeNodes.pop()
         except IndexError:
@@ -228,7 +239,7 @@ cdef class DFSRandom(BranchMethod):
         #self.move(activeNode, activeOld)
         return (activeNode, fixC, unfixC)
         
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         if np.random.randint(0, 2) == 0:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
@@ -236,7 +247,7 @@ cdef class DFSRandom(BranchMethod):
             self.activeNodes.append(node0)
             self.activeNodes.append(node1)
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
@@ -247,7 +258,10 @@ cdef class DFSRound(BranchMethod):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque ( [rootNode])
 
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+            int fixC, unfixC
         try:
             activeNode = self.activeNodes.pop()
         except IndexError:
@@ -261,7 +275,9 @@ cdef class DFSRound(BranchMethod):
         #self.move(activeNode, activeOld)
         return (activeNode, fixC, unfixC)
         
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
+        cdef: 
+            int k
         k = node0.parent.solution[node0.branchVariable]
         if k > 0.5:
             self.activeNodes.append(node0)
@@ -277,7 +293,7 @@ cdef class DFSRound(BranchMethod):
                 self.activeNodes.append(node0)
                 self.activeNodes.append(node1)
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         return (0, 0)
@@ -294,7 +310,10 @@ cdef class BBSMethod(BranchMethod):
         self.root.objectiveValue = self.root.lowerb = self.problem.objectiveValue
         self.activeNodes = [ (rootNode.lowerb, rootNode) ]
         
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+            int fixC, unfixC
         try:
             activeNode = heapq.heappop(self.activeNodes)[1]
         except IndexError:
@@ -302,11 +321,11 @@ cdef class BBSMethod(BranchMethod):
         (fixC, unfixC) = self.move(activeOld, activeNode)
         return (activeNode, fixC, unfixC)
          
-    def addNodes(self,node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         heapq.heappush(self.activeNodes, (node0.lowerb, node0))
         heapq.heappush(self.activeNodes, (node1.lowerb, node1))
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         self.problem.fixVariable(branchVariable, 0)
         with stopwatch() as timer:
@@ -337,7 +356,10 @@ cdef class DSTMethod(BranchMethod):
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.problem.objectiveValue
         
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+            int fixC, unfixC
         try:
             activeNode = self.activeNodes.pop()
         except IndexError:
@@ -345,7 +367,7 @@ cdef class DSTMethod(BranchMethod):
         (fixC, unfixC) = self.move(activeOld, activeNode)
         return (activeNode, fixC, unfixC)
         
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         if node0.objectiveValue < node1.objectiveValue:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
@@ -353,7 +375,7 @@ cdef class DSTMethod(BranchMethod):
             self.activeNodes.append(node0)
             self.activeNodes.append(node1)
             
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         parent.child0 = Node(parent, branchVariable, 0)
         self.problem.fixVariable(branchVariable, 0)
         with stopwatch() as timer:
@@ -379,7 +401,10 @@ cdef class DFSandBBSMethod(BranchMethod):
         BranchMethod.__init__(self, rootNode, problem)
         self.activeNodes = deque ( [rootNode])
 
-    def getActiveNode(self, activeOld):
+    cdef (Node, int, int) getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+            int fixC, unfixC
         if not self.FirstSolutionExists:
             try:
                 activeNode = self.activeNodes.pop()
@@ -401,7 +426,7 @@ cdef class DFSandBBSMethod(BranchMethod):
             (fixC, unfixC) = self.move(activeOld, activeNode)
             return (activeNode, fixC, unfixC)
         
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         if not self.FirstSolutionExists:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
@@ -409,7 +434,7 @@ cdef class DFSandBBSMethod(BranchMethod):
             heapq.heappush(self.activeNodes, (node0.lowerb, node0))
             heapq.heappush(self.activeNodes, (node1.lowerb, node1))
         
-    def createNodes(self, branchVariable, parent):
+    cdef (int, int) createNodes(self, int branchVariable, Node parent):
         if not self.FirstSolutionExists:
             parent.child0 = Node(parent, branchVariable, 0)
             parent.child1 = Node(parent, branchVariable, 1)
@@ -433,24 +458,42 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.problem.unfixVariable(branchVariable)
             return (0,0)
             
-    def refreshActiveNodes(self, activeOld):
+    cdef (int, int, int) refreshActiveNodes(self, Node activeOld):
+        cdef:
+            heap newNodes
+            Node oldNode, moveNode
+            int unfixC, moveC, fixC, i, leng
         newNodes = []
         oldNode = activeOld
         unfixC = 0
         moveC = 0
         fixC = 0
-        for i in self.activeNodes:
-            (fixCount, unfixCount) = self.move(activeOld, i)
+        leng = len(self.activeNodes)
+        for i from 0 <= i < leng
+            moveNode = activeNodes[i]
+            (fixCount, unfixCount) = self.move(activeOld, moveNode)
             unfixC += unfixCount
             fixC += fixCount
             moveC += 1
             with stopwatch() as timer:
                 self.problem.solve()
             self.lpTime += timer.duration
-            i.solution = self.problem.solution
-            i.objectiveValue = self.problem.objectiveValue
-            heapq.heappush(newNodes, (i.lowerb, i))
-            activeOld = i
+            moveNode.solution = self.problem.solution
+            moveNode.objectiveValue = self.problem.objectiveValue
+            heapq.heappush(newNodes, (moveNode.lowerb, moveNode))
+            activeOld = moveNode
+#        for i in self.activeNodes:
+#            (fixCount, unfixCount) = self.move(activeOld, i)
+#            unfixC += unfixCount
+#            fixC += fixCount
+#            moveC += 1
+#            with stopwatch() as timer:
+#                self.problem.solve()
+#            self.lpTime += timer.duration
+#            i.solution = self.problem.solution
+#            i.objectiveValue = self.problem.objectiveValue
+#            heapq.heappush(newNodes, (i.lowerb, i))
+#            activeOld = i
         (fixCount, unfixCount) = self.move(activeOld, oldNode)
         unfixC += unfixCount
         fixC += fixCount            
