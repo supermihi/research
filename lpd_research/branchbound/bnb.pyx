@@ -31,9 +31,6 @@ cdef class BranchAndBound:
         """
         activeOld = self.root
         branchCount = 0
-        fixCount = 0
-        unfixCount = 0
-        moveCount = 0
         timer = StopWatch()
         timer.start()
         while True:
@@ -42,14 +39,11 @@ cdef class BranchAndBound:
             logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
-                (activeNew, fixC, unfixC) = self.selectionMethod.getActiveNode(activeOld)
+                activeNew = self.selectionMethod.getActiveNode(activeOld)
             except NodesExhausted:
                 break
             
-            #(fixC, unfixC) = self.bMethod.move(activeOld, activeNew)
-            fixCount += fixC
-            unfixCount += unfixC
-            moveCount += 1
+
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
@@ -65,10 +59,7 @@ cdef class BranchAndBound:
                         if self.optimalSolution is None:
                             logging.info("first feasible solution after {} steps".format(branchCount))
                             self.selectionMethod.firstSolutionExists = True
-                            (fixC, unfixC, moveC) = self.selectionMethod.refreshActiveNodes(activeNew)
-                            fixCount += fixC
-                            unfixCount += unfixC
-                            moveCount += moveC
+                            self.selectionMethod.refreshActiveNodes(activeNew)
                         # found new global optimum
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
@@ -85,10 +76,8 @@ cdef class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    (fixC, unfixC) = self.selectionMethod.createNodes(branchVariable, activeNew)
+                    self.selectionMethod.createNodes(branchVariable, activeNew)
                     self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
-                    fixCount += fixC
-                    unfixCount += unfixC
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf
@@ -96,9 +85,9 @@ cdef class BranchAndBound:
             activeOld = activeNew
         
             
-        self.moveCount = moveCount
-        self.fixCount = fixCount
-        self.unfixCount = unfixCount
+        self.moveCount = self.selectionMethod.moveCount
+        self.fixCount = self.selectionMethod.fixCount
+        self.unfixCount = self.selectionMethod.unfixCount
         self.branchCount = branchCount
         self.time = timer.stop()
         self.lpTime = self.selectionMethod.lpTime
