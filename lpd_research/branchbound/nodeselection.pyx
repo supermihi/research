@@ -121,7 +121,10 @@ cdef class BFSRandom(BranchMethod):
         
     
     cdef void addNodes(self, Node node0, Node node1):
-        if int np.random.randint(0, 2) == 0:
+        cdef: 
+            int l
+        l = np.random.randint(0, 2)
+        if l == 0:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
         else:
@@ -167,7 +170,8 @@ cdef class BFSRound(BranchMethod):
             self.activeNodes.append(node0)
             self.activeNodes.append(node1)
         elif k == 0.5:
-            if np.random.randint(0, 2) == 0:
+            k = np.random.randint(0, 2)
+            if k == 0:
                 self.activeNodes.append(node1)
                 self.activeNodes.append(node0)
             else:
@@ -233,7 +237,10 @@ cdef class DFSRandom(BranchMethod):
         return activeNode
         
     cdef void addNodes(self, Node node0, Node node1):
-        if np.random.randint(0, 2) == 0:
+        cdef:
+            int l
+        l = np.random.randint(0, 2)
+        if l == 0:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
         else:
@@ -278,7 +285,8 @@ cdef class DFSRound(BranchMethod):
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
         elif k == 0.5:
-            if np.random.randint(0, 2) == 0:
+            k = np.random.randint(0, 2)
+            if l == 0:
                 self.activeNodes.append(node1)
                 self.activeNodes.append(node0)
             else:
@@ -454,7 +462,7 @@ cdef class DFSandBBSMethod(BranchMethod):
         newNodes = []
         oldNode = activeOld
         leng = len(self.activeNodes)
-        for i from 0 <= i < leng
+        for i from 0 <= i < leng:
             moveNode = activeNodes[i]
             self.move(activeOld, moveNode)
             unfixC += unfixCount

@@ -41,76 +41,76 @@ cdef class BFSRound(BranchMethod):
 	cdef:
 		public deque activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
 cdef class DFSMethod(BranchMethod):
 	cdef:
 		public deque activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	 
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	 
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	 
 	 
 cdef class DFSRandom(BranchMethod):
 	cdef:
 		public deque activeNodes
 	
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
 cdef class DFSRound(BranchMethod):
 	cdef:
 		public deque activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
 cdef class BBSMethod(BranchMethod):
 	cdef:
 		public heap activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
 cdef class DSTMethod(BranchMethod):
 	cdef:
 		public deque activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
 cdef class DFSandBBSMethod(BranchMethod):
 	cdef:
 		public deque activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld):
+	cdef Node getActiveNode(self, Node activeOld)
 	
-	cdef void addNodes(self, Node node0, Node node1):
+	cdef void addNodes(self, Node node0, Node node1)
 	
-	cdef void createNodes(self, int branchVariable, Node parent):
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
-	cdef void refreshActiveNodes(self, Node activeOld):
+	cdef void refreshActiveNodes(self, Node activeOld)
