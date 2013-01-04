@@ -96,8 +96,9 @@ cdef class BranchAndBound:
         logging.debug("******* optimal solution found *******")
         logging.debug(self.optimalSolution)
         logging.debug(self.optimalObjectiveValue)
-        logging.debug("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}".format(count=branchCount, fix=fixCount, unfix=unfixCount))
-        logging.debug("MoveCount: {move}".format(move=moveCount))
+        logging.debug("BranchCount: {count}; FixCount: {fix}, UnfixCount: {unfix}"\
+                      .format(count=self.branchCount, fix=self.fixCount, unfix=self.unfixCount))
+        logging.debug("MoveCount: {move}".format(move=self.moveCount))
         return self.optimalSolution
              
             

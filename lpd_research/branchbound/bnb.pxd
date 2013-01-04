@@ -8,7 +8,7 @@ cdef class BranchAndBound:
         public object selectionMethod, branchRule
         public np.ndarray optimalSolution
         public double optimalObjectiveValue
-        public int moveCount, branchCount, fixCount, unfixCount
+        public int branchCount, unfixCount, fixCount, moveCount
         public double time
         public double lpTime
         public double lpVsAll
