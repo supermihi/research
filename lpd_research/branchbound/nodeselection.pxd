@@ -1,4 +1,4 @@
-from branchbound.bnb import Node
+from branchbound.bnb cimport Node
 
 cdef class BranchMethod:
 	cdef:
