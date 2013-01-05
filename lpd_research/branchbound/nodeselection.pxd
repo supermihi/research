@@ -1,10 +1,12 @@
 from branchbound.bnb cimport Node
+#cimport heapq
+#from collections cimport deque
 
 cdef class BranchMethod:
 	cdef:
 		public Node root
 		public object problem
-		public bool FirstSolutionExists
+		public bint FirstSolutionExists
 		public double lpTime
 		public int moveCount
 		public int fixCount
@@ -16,8 +18,8 @@ cdef class BranchMethod:
 
 	
 cdef class BFSMethod(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -27,8 +29,8 @@ cdef class BFSMethod(BranchMethod):
 	
 	
 cdef class BFSRandom(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -38,8 +40,8 @@ cdef class BFSRandom(BranchMethod):
 	
 	
 cdef class BFSRound(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -49,8 +51,8 @@ cdef class BFSRound(BranchMethod):
 	
 	
 cdef class DFSMethod(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	 
@@ -60,8 +62,8 @@ cdef class DFSMethod(BranchMethod):
 	 
 	 
 cdef class DFSRandom(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 	
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -71,8 +73,8 @@ cdef class DFSRandom(BranchMethod):
 	
 	
 cdef class DFSRound(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -82,8 +84,8 @@ cdef class DFSRound(BranchMethod):
 	
 	
 cdef class BBSMethod(BranchMethod):
-	cdef:
-		public heap activeNodes
+	#cdef:
+	#	public heap activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -93,8 +95,8 @@ cdef class BBSMethod(BranchMethod):
 	
 	
 cdef class DSTMethod(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -104,8 +106,8 @@ cdef class DSTMethod(BranchMethod):
 	
 
 cdef class DFSandBBSMethod(BranchMethod):
-	cdef:
-		public deque activeNodes
+	#cdef:
+	#	public deque activeNodes
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	

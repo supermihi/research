@@ -67,7 +67,7 @@ if __name__ == "__main__":
             unfixCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
             moveCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
             timesXls.write(1,i*len(branchingRules)+j, bRule.__name__)
-    timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
+    #timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
     timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+2, 'Seed')
     #stats.save('stats.xls') 
                        
@@ -84,9 +84,9 @@ if __name__ == "__main__":
     for i in range(numberOfTrials):
         llr = np.random.standard_normal(code.blocklength)
         timesXls.write(2*i+2,len(nodeSelectionMethods)*len(branchingRules)+2, "{}".format(seed) )
-        with stopwatch() as timer:
-            checkDecoder.decode(llr)
-        cplexTime += timer.duration
+#        with stopwatch() as timer:
+#            checkDecoder.decode(llr)
+#        cplexTime += timer.duration
         timesXls.write(2*i+2,len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(timer.duration))
         for (j, (nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
             #llr = np.random.standard_normal(code.blocklength)
@@ -129,8 +129,8 @@ if __name__ == "__main__":
         moveCountsXls.write(j, i, "{}".format(moveCounts[argument]))
         timesXls.write(2*numberOfTrials + 3, i, "{}".format(times[argument]))
         timesXls.write(2*numberOfTrials + 4, i, "{} ({})".format(lpTimes[argument], round(lpVsAlls[argument], 2)))
-    cplexTime /= numberOfTrials
-    timesXls.write(2*numberOfTrials + 3, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
+    #cplexTime /= numberOfTrials
+    #timesXls.write(2*numberOfTrials + 3, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
     import pprint
     print("move counts:")
     pprint.pprint(moveCounts)

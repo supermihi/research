@@ -286,7 +286,7 @@ cdef class DFSRound(BranchMethod):
             self.activeNodes.append(node0)
         elif k == 0.5:
             k = np.random.randint(0, 2)
-            if l == 0:
+            if k == 0:
                 self.activeNodes.append(node1)
                 self.activeNodes.append(node0)
             else:
@@ -456,17 +456,15 @@ cdef class DFSandBBSMethod(BranchMethod):
             
     cdef void refreshActiveNodes(self, Node activeOld):
         cdef:
-            heap newNodes
+            #heap newNodes
             Node oldNode, moveNode
             int i, leng
         newNodes = []
         oldNode = activeOld
         leng = len(self.activeNodes)
         for i from 0 <= i < leng:
-            moveNode = activeNodes[i]
+            moveNode = self.activeNodes[i]
             self.move(activeOld, moveNode)
-            unfixC += unfixCount
-            fixC += fixCount
             self.moveCount += 1
             with stopwatch() as timer:
                 self.problem.solve()
