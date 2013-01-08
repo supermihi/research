@@ -5,7 +5,7 @@ from lpdecoding.codes.trellis cimport Trellis
 
 cdef class CSPDecoder(Decoder):
     cdef public object constraints
-    cdef public double lstsq_time, sp_time, cho_time, r_time, gensol_time, setcost_time
+    cdef public double lstsq_time, sp_time, cho_time, r_time, setcost_time
     cdef public int majorCycles, minorCycles, maxMajorCycles, blocklength
     #  temporary variables
     cdef np.ndarray \
@@ -17,13 +17,15 @@ cdef class CSPDecoder(Decoder):
         w, \
         RHS, \
         X, \
-        codewords
+        codewords, paths
     cdef np.int_t k, lenS
-    cdef bint measureTimes
+    cdef bint measureTimes, useHeuristic
+    cdef int numEncoders
     cdef double current_ref
     cdef int NearestPointAlgorithm(self)
     cdef int solveScalarization(self, np.double_t[:] direction,
-                                 np.double_t[:] result, np.double_t[:] codeword)
+                                 np.double_t[:] result, np.double_t[:] codeword,
+                                 np.int_t[:,:] paths=?)
     cdef void resetData(self, np.double_t[:] initPoint) 
     cdef void updateData(self, double delta_r)
     cdef void calculateSolution(self)
