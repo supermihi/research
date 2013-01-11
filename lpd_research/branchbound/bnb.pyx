@@ -36,7 +36,7 @@ cdef class BranchAndBound:
         while True:
             logging.debug('main loop iteration {}'.format(branchCount))
             logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
-            logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
+            #logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             try:
                 activeNew = self.selectionMethod.getActiveNode(activeOld)

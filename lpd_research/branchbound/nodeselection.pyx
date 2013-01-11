@@ -9,7 +9,7 @@ from __future__ import absolute_import
 #from collections import deque
 import heapq
 from branchbound.bnb cimport Node
-from branchbound.myList import myDeque
+from branchbound.myList cimport myDeque
 from branchbound.myList import MyIndexError
 from .bnb import NodesExhausted
 from lpdecoding.utils import stopwatch
@@ -80,7 +80,7 @@ cdef class BFSMethod(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -111,7 +111,7 @@ cdef class BFSRandom(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -150,7 +150,7 @@ cdef class BFSRound(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -197,7 +197,7 @@ cdef class DFSMethod(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -228,7 +228,7 @@ cdef class DFSRandom(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -266,7 +266,7 @@ cdef class DFSRound(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -363,7 +363,7 @@ cdef class DSTMethod(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except MyIndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         return activeNode
@@ -409,7 +409,7 @@ cdef class DFSandBBSMethod(BranchMethod):
         if not self.FirstSolutionExists:
             try:
                 activeNode = self.activeNodes.pop()
-            except MyIndexError:
+            except MyIndexError():
                 raise NodesExhausted()
             self.move(activeOld, activeNode)
             with stopwatch() as timer:

@@ -7,11 +7,11 @@
 
 
 
-from branchbound.bnb import Node
+from branchbound.bnb cimport Node
 
-class dequeNode:
+cdef class dequeNode:
     
-    def __init__(self, pre=None, post=None, element=None):
+    def __init__(self, Node pre=None, Node post=None, Node element=None):
         self.pre = pre
         self.element = element
         self.post = post
@@ -19,20 +19,22 @@ class dequeNode:
 class MyIndexError(Exception):  
     pass
 
-class myDeque:
+cdef class myDeque:
     
-    def __init__(self, start=None):
-        start = dequeNode(None, None, start)
-        self.first = start
-        self.last = start
+    def __init__(self, Node start=None):
+        startNode = dequeNode(None, None, start)
+        self.first = startNode
+        self.last = startNode
         if start is not None:
             self.length = 1
         else:
             self.length = 0
             
-    def popleft(self):
-        if not self.length == 0:
-            returnValue = self.first
+    cdef Node popleft(self):
+        cdef:
+            Node returnValue
+        if self.length > 0:
+            returnValue = self.first.element
             if self.length > 1:
                 self.first = self.first.post
                 self.length += -1
@@ -44,9 +46,11 @@ class myDeque:
         else:
             raise MyIndexError()
     
-    def pop(self):
+    cdef Node pop(self):
+        cdef:
+            Node returnValue
         if not self.length == 0:
-            returnValue = self.last
+            returnValue = self.last.element
             if self.length > 1:
                 self.last = self.last.pre
                 self.length += -1
@@ -58,10 +62,10 @@ class myDeque:
         else:
             raise MyIndexError()
         
-    def append(self, nextNode=None):
+    cdef void append(self, Node nextNode):
         self.last.post = nextNode
-        myNextNode = dequeNode(self.last, None, nextNode)
-        self.last = myNextNode
+        self.last = dequeNode(self.last, None, nextNode)
         self.length += 1
+
             
     

@@ -33,11 +33,11 @@ if __name__ == "__main__":
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
 
-    nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
-                           nodeselection.BFSRandom, nodeselection.BFSRound, \
+    #nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
+    nodeSelectionMethods = nodeselection.BFSRandom, nodeselection.BFSRound, \
                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
                            nodeselection.DFSRound, nodeselection.DSTMethod, \
-                           nodeselection.DFSandBBSMethod
+                           #nodeselection.DFSandBBSMethod
                            
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
@@ -67,7 +67,7 @@ if __name__ == "__main__":
             unfixCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
             moveCountsXls.write(1,i*len(branchingRules)+j, bRule.__name__)
             timesXls.write(1,i*len(branchingRules)+j, bRule.__name__)
-    #timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
+    timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
     timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+2, 'Seed')
     #stats.save('stats.xls') 
                        
@@ -84,9 +84,9 @@ if __name__ == "__main__":
     for i in range(numberOfTrials):
         llr = np.random.standard_normal(code.blocklength)
         timesXls.write(2*i+2,len(nodeSelectionMethods)*len(branchingRules)+2, "{}".format(seed) )
-#        with stopwatch() as timer:
-#            checkDecoder.decode(llr)
-#        cplexTime += timer.duration
+        with stopwatch() as timer:
+            checkDecoder.decode(llr)
+        cplexTime += timer.duration
         timesXls.write(2*i+2,len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(timer.duration))
         for (j, (nsMethod, bRule)) in enumerate(itertools.product(nodeSelectionMethods, branchingRules)):
             #llr = np.random.standard_normal(code.blocklength)
