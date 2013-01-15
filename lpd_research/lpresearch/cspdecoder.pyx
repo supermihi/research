@@ -150,6 +150,7 @@ cdef class CSPDecoder(Decoder):
         direction[self.k] = 1
         if self.useHeuristic:
             result = self.solveScalarization(direction, X, codewords[0,:], paths[0,:,:])
+            self.objectiveValue = 0
         else:
             result = self.solveScalarization(direction, X, codewords[0,:])
         if result == -2:
@@ -215,20 +216,22 @@ cdef class CSPDecoder(Decoder):
                 elif abs(ref-old_ref) < EPS:
                     #self.objectiveValue = ref
                     break
-                self.objectiveValue = self.current_ref = ref #  update reference point 
+                self.current_ref = ref #  update reference point 
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
             self.mlCertificate = self.foundCodeword = (self.lenS==1)
+            self.objectiveValue = self.current_ref
             if self.useHeuristic and self.lenS > 1:
-                self.objectiveValue = 0
-                for k in range(self.lenS):
-                    for i in range(self.numEncoders):
-                        codeword = self.code.encodePath(paths[self.S[k],i], self.code.encoders[i])
-                        result = np.dot(codeword, self.llrVector)
-                        if result < self.objectiveValue:
-                            self.objectiveValue = result
-                            self.solution = codeword
-                            self.foundCodeword = True
+                pass
+#                self.objectiveValue = 0
+#                for k in range(self.lenS):
+#                    for i in range(self.numEncoders):
+#                        codeword = self.code.encodePath(paths[self.S[k],i], self.code.encoders[i])
+#                        result = np.dot(codeword, self.llrVector)
+#                        if result < self.objectiveValue:
+#                            self.objectiveValue = result
+#                            self.solution = codeword
+#                            self.foundCodeword = True
             else:
                 self.calculateSolution()
         if not self.useHeuristic or self.lenS == 1:
@@ -558,7 +561,7 @@ cdef class CSPDecoder(Decoder):
         """
         
         cdef:
-            double lamb = direction[self.k], c_result = 0
+            double tmp, lamb = direction[self.k], c_result = 0
             int k, i
         for k in range(self.k):
             result[k] = 0
@@ -567,6 +570,11 @@ cdef class CSPDecoder(Decoder):
         for i, enc in enumerate(self.code.encoders):
             if self.useHeuristic and enc.isInfoConnected:
                 c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword, paths[i,:])
+                encoded = self.code.encodePath(paths[i,:], enc)
+                tmp = np.dot(encoded, self.llrVector)
+                if tmp < self.objectiveValue:
+                    self.objectiveValue = tmp
+                    self.solution = encoded
             else:
                 c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword)
             if c_result == inf:
