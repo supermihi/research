@@ -30,9 +30,9 @@ cdef class BranchMethod:
     cdef void refreshActiveNodes(self, Node activeOld):
         pass
     
-    def getActiveNode(self, activeOld):
+    cdef Node getActiveNode(self, Node activeOld):
         """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
-        pass
+        raise NotImplementedError()
     
     def addNodes(self, node0, node1):
         pass

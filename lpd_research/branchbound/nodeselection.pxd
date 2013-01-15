@@ -15,17 +15,18 @@ cdef class BranchMethod:
 	
 	cdef void refreshActiveNodes(self, Node activeOld)
 		
-	cdef void move(self, Node fromNode, Node toNode)	
+	cdef void move(self, Node fromNode, Node toNode)
+	cdef Node getActiveNode(self, Node activeOld)
 
 	
 cdef class BFSMethod(BranchMethod):
 	cdef:
 		public myDeque activeNodes
 		
-	cdef Node getActiveNode(self, Node activeOld)
+	#cdef Node getActiveNode(self, Node activeOld)
 	
 	cdef void addNodes(self, Node node0, Node node1)
-	
+	cdef Node getActiveNode(self, Node activeOld)
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	

@@ -9,7 +9,6 @@ from __future__ import print_function
 from libc.math cimport fmin
 import numpy as np
 import logging
-
 from lpdecoding.utils import StopWatch
 
 cdef class BranchAndBound:
@@ -29,7 +28,8 @@ cdef class BranchAndBound:
     def run(self):
         """Builds tree and runs a branch and bound algorithm.
         """
-        activeOld = self.root
+        cdef:
+            Node activeNew, activeOld = self.root
         branchCount = 0
         timer = StopWatch()
         timer.start()
