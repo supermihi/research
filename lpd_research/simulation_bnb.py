@@ -33,11 +33,11 @@ if __name__ == "__main__":
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
 
-    nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
-                           nodeselection.BFSRandom, nodeselection.BFSRound, \
+    #nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
+    nodeSelectionMethods = nodeselection.BFSRandom, nodeselection.BFSRound, \
                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
                            nodeselection.DFSRound, nodeselection.DSTMethod, \
-                           nodeselection.DFSandBBSMethod
+                           #nodeselection.DFSandBBSMethod
                            
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
@@ -129,8 +129,8 @@ if __name__ == "__main__":
         moveCountsXls.write(j, i, "{}".format(moveCounts[argument]))
         timesXls.write(2*numberOfTrials + 3, i, "{}".format(times[argument]))
         timesXls.write(2*numberOfTrials + 4, i, "{} ({})".format(lpTimes[argument], round(lpVsAlls[argument], 2)))
-    cplexTime /= numberOfTrials
-    timesXls.write(2*numberOfTrials + 3, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
+    #cplexTime /= numberOfTrials
+    #timesXls.write(2*numberOfTrials + 3, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
     import pprint
     print("move counts:")
     pprint.pprint(moveCounts)

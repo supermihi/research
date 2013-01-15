@@ -6,9 +6,11 @@
 # published by the Free Software Foundation
 from __future__ import absolute_import
 
-from collections import deque
+#from collections import deque
 import heapq
 from branchbound.bnb cimport Node
+from branchbound.myList cimport myDeque
+from branchbound.myList import MyIndexError
 from .bnb import NodesExhausted
 from lpdecoding.utils import stopwatch
 import numpy as np
@@ -71,14 +73,14 @@ cdef class BFSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque( [rootNode] )
+        self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -102,14 +104,14 @@ cdef class BFSRandom(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque( [rootNode] )
+        self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -141,14 +143,14 @@ cdef class BFSRound(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque( [rootNode] )
+        self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
         try:
             activeNode = self.activeNodes.popleft()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -188,14 +190,14 @@ cdef class DFSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque ( [rootNode])
+        self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -219,14 +221,14 @@ cdef class DFSRandom(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque ( [rootNode])
+        self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -257,14 +259,14 @@ cdef class DFSRound(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque ( [rootNode])
+        self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
@@ -287,7 +289,7 @@ cdef class DFSRound(BranchMethod):
             self.activeNodes.append(node0)
         elif k == 0.5:
             k = np.random.randint(0, 2)
-            if l == 0:
+            if k == 0:
                 self.activeNodes.append(node1)
                 self.activeNodes.append(node0)
             else:
@@ -349,7 +351,7 @@ cdef class DSTMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque([rootNode])
+        self.activeNodes = myDeque(rootNode)
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -361,7 +363,7 @@ cdef class DSTMethod(BranchMethod):
             Node activeNode
         try:
             activeNode = self.activeNodes.pop()
-        except IndexError:
+        except MyIndexError():
             raise NodesExhausted()
         self.move(activeOld, activeNode)
         return activeNode
@@ -399,7 +401,7 @@ cdef class DFSandBBSMethod(BranchMethod):
 
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
-        self.activeNodes = deque ( [rootNode])
+        self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
@@ -407,7 +409,7 @@ cdef class DFSandBBSMethod(BranchMethod):
         if not self.FirstSolutionExists:
             try:
                 activeNode = self.activeNodes.pop()
-            except IndexError:
+            except MyIndexError():
                 raise NodesExhausted()
             self.move(activeOld, activeNode)
             with stopwatch() as timer:
@@ -457,17 +459,15 @@ cdef class DFSandBBSMethod(BranchMethod):
             
     cdef void refreshActiveNodes(self, Node activeOld):
         cdef:
-            heap newNodes
+            #heap newNodes
             Node oldNode, moveNode
             int i, leng
         newNodes = []
         oldNode = activeOld
-        leng = len(self.activeNodes)
+        leng = self.activeNodes.length
         for i from 0 <= i < leng:
-            moveNode = activeNodes[i]
+            moveNode = self.activeNodes.pop()
             self.move(activeOld, moveNode)
-            unfixC += unfixCount
-            fixC += fixCount
             self.moveCount += 1
             with stopwatch() as timer:
                 self.problem.solve()
