@@ -165,6 +165,8 @@ cdef class CSPDecoder(Decoder):
             self.w[0] = 1
             self.calculateSolution()
             self.objectiveValue = X[self.k]
+            if self.useHeuristic:
+                self.objectiveValue *= 10
             self.mlCertificate = self.foundCodeword = True
             try:
                 self.stats["immediateSolutions"] += 1
@@ -220,9 +222,9 @@ cdef class CSPDecoder(Decoder):
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
             self.mlCertificate = self.foundCodeword = (self.lenS==1)
-            self.objectiveValue = self.current_ref
-            if self.useHeuristic and self.lenS > 1:
-                pass
+            
+            if self.useHeuristic:
+                self.foundCodeword = True
 #                self.objectiveValue = 0
 #                for k in range(self.lenS):
 #                    for i in range(self.numEncoders):
@@ -233,8 +235,9 @@ cdef class CSPDecoder(Decoder):
 #                            self.solution = codeword
 #                            self.foundCodeword = True
             else:
+                self.objectiveValue = self.current_ref
                 self.calculateSolution()
-        if not self.useHeuristic or self.lenS == 1:
+        if not self.useHeuristic:
             self.objectiveValue *= 10
         if self.measureTimes:
             if "sp_time" not in self.stats:
@@ -654,7 +657,8 @@ cdef class CSPDecoder(Decoder):
     cpdef params(self):
         return OrderedDict([("name", self.name),
                             ("maxMajorCycles", self.maxMajorCycles),
-                            ("measureTimes", self.measureTimes)])
+                            ("measureTimes", self.measureTimes),
+                            ("useHeuristic", self.useHeuristic)])
 
 
 class NDFInteriorDecoder(Decoder):
