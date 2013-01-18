@@ -40,8 +40,10 @@ cdef class BranchAndBound:
             #select one of the active nodes, move there and (solve the corresponding problem)
             #try:
             activeNew = self.selectionMethod.getActiveNode(activeOld)
+            print("activeNewsolution: {}".format(activeNew.solution))
             #except NodesExhausted:
-            if activeNew == None:
+            if activeNew is None:
+                print("i shouldnt be here")
                 break
             
 
