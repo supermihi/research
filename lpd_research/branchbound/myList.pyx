@@ -33,8 +33,12 @@ cdef class myDeque:
     cdef Node popleft(self):
         cdef:
             Node returnValue
-        if self.length > 0:
-            returnValue = self.first.element
+        #if self.length > 0:
+        #returnValue = self.first.element
+        if self.length == 0:
+            return None
+        else:
+            returnValue = self.last.element
             if self.length > 1:
                 self.first = self.first.post
                 self.length += -1
@@ -43,13 +47,15 @@ cdef class myDeque:
                 self.last = None
                 self.length = 0
             return returnValue
-        else:
-            raise MyIndexError()
-    
+#        else:
+#            return None
+#    
     cdef Node pop(self):
         cdef:
             Node returnValue
-        if not self.length == 0:
+        if self.length == 0:
+            return None
+        else:
             returnValue = self.last.element
             if self.length > 1:
                 self.last = self.last.pre
@@ -59,8 +65,8 @@ cdef class myDeque:
                 self.last = None
                 self.length = 0
             return returnValue
-        else:
-            raise MyIndexError()
+        #else:
+        #    return None
         
     cdef void append(self, Node nextNode):
         self.last.post = nextNode

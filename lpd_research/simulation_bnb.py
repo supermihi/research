@@ -34,10 +34,10 @@ if __name__ == "__main__":
     
 
     #nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
-    nodeSelectionMethods = nodeselection.BFSRandom, nodeselection.BFSRound, \
-                           nodeselection.DFSMethod, nodeselection.DFSRandom, \
-                           nodeselection.DFSRound, nodeselection.DSTMethod, \
-                           #nodeselection.DFSandBBSMethod
+    nodeSelectionMethods = [nodeselection.BFSRandom]#, nodeselection.BFSRound#, \
+#                           #nodeselection.DFSMethod, nodeselection.DFSRandom, \
+#                           #nodeselection.DFSRound, nodeselection.DSTMethod, \
+#                           #nodeselection.DFSandBBSMethod
                            
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \

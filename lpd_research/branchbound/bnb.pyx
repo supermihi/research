@@ -38,9 +38,10 @@ cdef class BranchAndBound:
             logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
             #logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
-            try:
-                activeNew = self.selectionMethod.getActiveNode(activeOld)
-            except NodesExhausted:
+            #try:
+            activeNew = self.selectionMethod.getActiveNode(activeOld)
+            #except NodesExhausted:
+            if activeNew == None:
                 break
             
 
