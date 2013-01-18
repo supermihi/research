@@ -11,7 +11,7 @@ from branchbound.bnb cimport Node
 
 cdef class dequeNode:
     
-    def __init__(self, Node pre=None, Node post=None, Node element=None):
+    def __init__(self, dequeNode pre=None, dequeNode post=None, Node element=None):
         self.pre = pre
         self.element = element
         self.post = post
@@ -38,9 +38,13 @@ cdef class myDeque:
         if self.length == 0:
             return None
         else:
+#            print("i am here")
             returnValue = self.last.element
+#            print("here i go again with length: {}".format(self.length))
             if self.length > 1:
+#                print("blub")
                 self.first = self.first.post
+#                print("do i still blubber?")
                 self.length += -1
             else:
                 self.first = None
@@ -69,9 +73,21 @@ cdef class myDeque:
         #    return None
         
     cdef void append(self, Node nextNode):
-        self.last.post = nextNode
-        self.last = dequeNode(self.last, None, nextNode)
+#        print("append function used")
+#        print("self.last: {}".format(self.last))
+        nextDequeNode = dequeNode(self.last, None, nextNode)
+#       print("i got a nextDequeNode")
+#       print("length: {}".format(self.length))
+        if self.length == 0:
+            self.first = nextDequeNode
+            self.last = nextDequeNode
+        else:
+#            print("i am here")
+            self.last.post = nextDequeNode
+#            print("i got so far")
+            self.last = nextDequeNode
+#            print("almost there")
         self.length += 1
-
+        print("append function successfull")
             
     

@@ -40,9 +40,12 @@ cdef class BranchAndBound:
             #select one of the active nodes, move there and (solve the corresponding problem)
             #try:
             activeNew = self.selectionMethod.getActiveNode(activeOld)
+            print("1")
+            print("activeNew: {}".format(activeNew))
+            print("2")
             print("activeNewsolution: {}".format(activeNew.solution))
             #except NodesExhausted:
-            if activeNew is None:
+            if not isinstance(activeNew, Node):
                 print("i shouldnt be here")
                 break
             
@@ -51,6 +54,7 @@ cdef class BranchAndBound:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
                 branchVariable = self.branchRule.selectVariable(activeNew.solution)
+                print("branchVariable: {}".format(branchVariable))
                 logging.debug('branchVariable: {}'.format(branchVariable))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
@@ -78,9 +82,11 @@ cdef class BranchAndBound:
                 elif branchVariable is None:
                     pass
                 else:
+                    print("create and add new Nodes")
                     #create children with branchValue and add them to the activeNodes-list
                     self.selectionMethod.createNodes(branchVariable, activeNew)
                     self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
+                    print("nodes available: {}".format(self.selectionMethod.activeNodes.length))
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf

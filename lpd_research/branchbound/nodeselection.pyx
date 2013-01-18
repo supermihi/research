@@ -34,10 +34,10 @@ cdef class BranchMethod:
         """Return next active node. If all nodes are exhausted, raises an NodeExhausted exception."""
         raise NotImplementedError()
     
-    def addNodes(self, node0, node1):
+    cdef void addNodes(self, Node node0, Node node1):
         pass
     
-    def createNodes(self, branchVariable, parent):
+    cdef void createNodes(self, int branchVariable, Node parent):
         pass
     
     cdef void move(self,Node fromNode, Node toNode):
@@ -129,6 +129,7 @@ cdef class BFSRandom(BranchMethod):
         cdef: 
             int l
         l = np.random.randint(0, 2)
+        print("l: {}".format(l))
         if l == 0:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)

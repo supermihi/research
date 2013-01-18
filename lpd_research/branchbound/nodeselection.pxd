@@ -14,7 +14,8 @@ cdef class BranchMethod:
 		public int unfixCount
 	
 	cdef void refreshActiveNodes(self, Node activeOld)
-		
+	cdef void addNodes(self, Node node0, Node node1)
+	cdef void createNodes(self, int branchVariable, Node parent)
 	cdef void move(self, Node fromNode, Node toNode)
 	cdef Node getActiveNode(self, Node activeOld)
 

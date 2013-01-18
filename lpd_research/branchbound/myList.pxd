@@ -2,7 +2,8 @@ from branchbound.bnb cimport Node
 
 cdef class dequeNode:
 	cdef:
-		public Node pre, post, element
+		public Node element
+		public dequeNode pre, post
 		
 cdef class myDeque:
 	cdef:
