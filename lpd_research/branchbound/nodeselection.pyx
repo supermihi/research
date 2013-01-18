@@ -109,10 +109,12 @@ cdef class BFSRandom(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.popleft()
-        except MyIndexError():
-            raise NodesExhausted()
+#        try:
+        activeNode = self.activeNodes.popleft()
+        if activeNode == None:
+            return None
+#        except MyIndexError():
+#            raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
             self.problem.solve()
@@ -148,10 +150,12 @@ cdef class BFSRound(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.popleft()
-        except MyIndexError():
-            raise NodesExhausted()
+#        try:
+        activeNode = self.activeNodes.popleft()
+#        except MyIndexError():
+#            raise NodesExhausted()
+        if activeNode == None:
+            return None
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
             self.problem.solve()
