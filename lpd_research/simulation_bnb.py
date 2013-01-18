@@ -95,6 +95,8 @@ if __name__ == "__main__":
             problem.setObjectiveFunction(llr)
             algo = bnb.BranchAndBound(problem, eps=1e-10, branchRule=bRule, selectionMethod=nsMethod)
             solution = algo.run()
+            print("first time solution {}".format(solution))
+            print("algorithm solution {}".format(algo.optimalSolution))
             branchCountsXls.write(i+2, j, "{}".format(algo.branchCount))
             fixCountsXls.write(i+2, j, "{}".format(algo.fixCount))
             unfixCountsXls.write(i+2, j, "{}".format(algo.unfixCount))
@@ -103,6 +105,8 @@ if __name__ == "__main__":
             timesXls.write(2*i+3, j, "{} ({})".format(algo.lpTime, round(algo.lpVsAll,2)))
             for attr in attrs:
                 locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] += getattr(algo, attr)
+            print("{}".format(checkDecoder.solution))
+            print("{} is solution".format(solution))
             if np.allclose(checkDecoder.solution, solution):
                 print("method {}/{} okay".format(nsMethod.__name__, bRule.__name__))
                 print("\toptimal value={}".format(algo.optimalObjectiveValue))
