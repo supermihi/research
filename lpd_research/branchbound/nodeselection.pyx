@@ -43,20 +43,27 @@ cdef class BranchMethod:
     cdef void move(self,Node fromNode, Node toNode):
         """Moves problem from fromNode to toNode.
         """
+        print("i am in the movefunction")
+        print("fromNode.depth: {}, toNode.depth: {}".format(fromNode.depth, toNode.depth))
+        self.moveCount += 1
         fix = []
         #logging.debug('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
+            print("move 1")
             self.problem.unfixVariable(fromNode.branchVariable)
             self.unfixCount += 1
             #logging.debug('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
+            print("move 2")
             fix.append( (toNode.branchVariable, toNode.branchValue) )
             self.fixCount += 1
             toNode = toNode.parent
+            print("toNode: {}, fromNode: {}".format(toNode, fromNode))
             
         while toNode is not fromNode:
+            print("move 3")
             #logging.debug('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
             self.unfixCount = self.unfixCount +1
@@ -65,6 +72,7 @@ cdef class BranchMethod:
             toNode = toNode.parent
         #logging.debug("Fix list: {}".format(fix))
         for var, value in fix:
+            print("move 4")
             self.problem.fixVariable(var, value)
             self.fixCount += 1
 
@@ -473,7 +481,7 @@ cdef class DFSandBBSMethod(BranchMethod):
         for i from 0 <= i < leng:
             moveNode = self.activeNodes.pop()
             self.move(activeOld, moveNode)
-            self.moveCount += 1
+            #self.moveCount += 1
             with stopwatch() as timer:
                 self.problem.solve()
             self.lpTime += timer.duration
@@ -494,5 +502,5 @@ cdef class DFSandBBSMethod(BranchMethod):
 #            heapq.heappush(newNodes, (i.lowerb, i))
 #            activeOld = i
         self.move(activeOld, oldNode)            
-        self.moveCount += 1
+        #self.moveCount += 1
     

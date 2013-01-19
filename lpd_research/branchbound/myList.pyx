@@ -39,7 +39,7 @@ cdef class myDeque:
             return None
         else:
 #            print("i am here")
-            returnValue = self.last.element
+            returnValue = self.first.element
 #            print("here i go again with length: {}".format(self.length))
             if self.length > 1:
 #                print("blub")

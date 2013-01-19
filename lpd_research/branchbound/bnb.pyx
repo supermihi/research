@@ -40,10 +40,10 @@ cdef class BranchAndBound:
             #select one of the active nodes, move there and (solve the corresponding problem)
             #try:
             activeNew = self.selectionMethod.getActiveNode(activeOld)
-            print("1")
-            print("activeNew: {}".format(activeNew))
-            print("2")
-            print("activeNewsolution: {}".format(activeNew.solution))
+            print("1. activeNew: {}".format(activeNew))
+            print("1. activeOld: {}".format(activeOld))
+            print("2. activeNewsolution: {}".format(activeNew.solution))
+            print("move: {}, fix: {}, unfix: {}".format(self.selectionMethod.moveCount, self.selectionMethod.fixCount, self.selectionMethod.unfixCount))
             #except NodesExhausted:
             if not isinstance(activeNew, Node):
                 print("i shouldnt be here")
@@ -76,10 +76,13 @@ cdef class BranchAndBound:
             
                 #create new children or close branch
                 if activeNew.lowerb > self.root.upperb:
+                    print("i passed one")
                     pass
                 elif abs(activeNew.lowerb - activeNew.upperb) < self.eps:
+                    print("i passed two")
                     pass
                 elif branchVariable is None:
+                    print("i passed three")
                     pass
                 else:
                     print("create and add new Nodes")

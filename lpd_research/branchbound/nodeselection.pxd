@@ -34,6 +34,7 @@ cdef class BFSMethod(BranchMethod):
 cdef class BFSRandom(BranchMethod):
 	cdef:
 		public myDeque activeNodes
+		public bint firstSolutionExists
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
