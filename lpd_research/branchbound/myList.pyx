@@ -88,6 +88,6 @@ cdef class myDeque:
             self.last = nextDequeNode
 #            print("almost there")
         self.length += 1
-        print("append function successfull")
+#        print("append function successfull")
             
     

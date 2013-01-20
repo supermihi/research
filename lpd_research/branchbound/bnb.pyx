@@ -40,13 +40,9 @@ cdef class BranchAndBound:
             #select one of the active nodes, move there and (solve the corresponding problem)
             #try:
             activeNew = self.selectionMethod.getActiveNode(activeOld)
-            print("1. activeNew: {}".format(activeNew))
-            print("1. activeOld: {}".format(activeOld))
-            print("2. activeNewsolution: {}".format(activeNew.solution))
-            print("move: {}, fix: {}, unfix: {}".format(self.selectionMethod.moveCount, self.selectionMethod.fixCount, self.selectionMethod.unfixCount))
             #except NodesExhausted:
             if not isinstance(activeNew, Node):
-                print("i shouldnt be here")
+                #print("i shouldnt be here")
                 break
             
 
@@ -54,7 +50,7 @@ cdef class BranchAndBound:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
                 branchVariable = self.branchRule.selectVariable(activeNew.solution)
-                print("branchVariable: {}".format(branchVariable))
+                #print("branchVariable: {}".format(branchVariable))
                 logging.debug('branchVariable: {}'.format(branchVariable))
                 #update bounds of all nodes if neccesary
                 activeNew.lowerb = activeNew.objectiveValue
@@ -76,20 +72,15 @@ cdef class BranchAndBound:
             
                 #create new children or close branch
                 if activeNew.lowerb > self.root.upperb:
-                    print("i passed one")
                     pass
                 elif abs(activeNew.lowerb - activeNew.upperb) < self.eps:
-                    print("i passed two")
                     pass
                 elif branchVariable is None:
-                    print("i passed three")
                     pass
                 else:
-                    print("create and add new Nodes")
                     #create children with branchValue and add them to the activeNodes-list
                     self.selectionMethod.createNodes(branchVariable, activeNew)
                     self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
-                    print("nodes available: {}".format(self.selectionMethod.activeNodes.length))
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf

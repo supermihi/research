@@ -43,27 +43,27 @@ cdef class BranchMethod:
     cdef void move(self,Node fromNode, Node toNode):
         """Moves problem from fromNode to toNode.
         """
-        print("i am in the movefunction")
-        print("fromNode.depth: {}, toNode.depth: {}".format(fromNode.depth, toNode.depth))
+#        print("i am in the movefunction")
+#        print("fromNode.depth: {}, toNode.depth: {}".format(fromNode.depth, toNode.depth))
         self.moveCount += 1
         fix = []
         #logging.debug('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
-            print("move 1")
+#            print("move 1")
             self.problem.unfixVariable(fromNode.branchVariable)
             self.unfixCount += 1
             #logging.debug('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
-            print("move 2")
+#            print("move 2")
             fix.append( (toNode.branchVariable, toNode.branchValue) )
             self.fixCount += 1
             toNode = toNode.parent
-            print("toNode: {}, fromNode: {}".format(toNode, fromNode))
+#            print("toNode: {}, fromNode: {}".format(toNode, fromNode))
             
         while toNode is not fromNode:
-            print("move 3")
+#           print("move 3")
             #logging.debug('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
             self.unfixCount = self.unfixCount +1
@@ -72,12 +72,12 @@ cdef class BranchMethod:
             toNode = toNode.parent
         #logging.debug("Fix list: {}".format(fix))
         for var, value in fix:
-            print("move 4")
+#            print("move 4")
             self.problem.fixVariable(var, value)
             self.fixCount += 1
 
 
-cdef class BFSMethod(BranchMethod):
+cdef class MyBFSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -86,10 +86,12 @@ cdef class BFSMethod(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.popleft()
-        except MyIndexError():
-            raise NodesExhausted()
+        #try:
+        activeNode = self.activeNodes.popleft()
+        #except MyIndexError():
+        #    raise NodesExhausted()
+        if activeNode == None:
+            return None
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
             self.problem.solve()
@@ -108,7 +110,7 @@ cdef class BFSMethod(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
         
-cdef class BFSRandom(BranchMethod):
+cdef class MyBFSRandom(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -137,7 +139,7 @@ cdef class BFSRandom(BranchMethod):
         cdef: 
             int l
         l = np.random.randint(0, 2)
-        print("l: {}".format(l))
+        #print("l: {}".format(l))
         if l == 0:
             self.activeNodes.append(node1)
             self.activeNodes.append(node0)
@@ -150,7 +152,7 @@ cdef class BFSRandom(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
     
-cdef class BFSRound(BranchMethod):
+cdef class MyBFSRound(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -199,7 +201,7 @@ cdef class BFSRound(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
          
         
-cdef class DFSMethod(BranchMethod):
+cdef class MyDFSMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -208,10 +210,12 @@ cdef class DFSMethod(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.pop()
-        except MyIndexError():
-            raise NodesExhausted()
+        #try:
+        activeNode = self.activeNodes.pop()
+        if activeNode == None:
+            return None
+        #except MyIndexError():
+            #raise NodesExhausted()
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
             self.problem.solve()
@@ -230,7 +234,7 @@ cdef class DFSMethod(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
         
-cdef class DFSRandom(BranchMethod):
+cdef class MyDFSRandom(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -239,10 +243,12 @@ cdef class DFSRandom(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.pop()
-        except MyIndexError():
-            raise NodesExhausted()
+        #try:
+        activeNode = self.activeNodes.pop()
+        #except MyIndexError():
+        #    raise NodesExhausted()
+        if activeNode == None:
+            return None
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
             self.problem.solve()
@@ -268,7 +274,7 @@ cdef class DFSRandom(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
     
-cdef class DFSRound(BranchMethod):
+cdef class MyDFSRound(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -277,10 +283,12 @@ cdef class DFSRound(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.pop()
-        except MyIndexError():
-            raise NodesExhausted()
+        #try:
+        activeNode = self.activeNodes.pop()
+        #except MyIndexError():
+        #    raise NodesExhausted()
+        if activeNode == None:
+            return None
         self.move(activeOld, activeNode)
         with stopwatch() as timer:
             self.problem.solve()
@@ -360,7 +368,7 @@ cdef class BBSMethod(BranchMethod):
         self.fixCount += 2              
 
 #DeepSeaTroll Search Method        
-cdef class DSTMethod(BranchMethod):
+cdef class MyDSTMethod(BranchMethod):
     
     def __init__(self, rootNode, problem):
         BranchMethod.__init__(self, rootNode, problem)
@@ -374,10 +382,12 @@ cdef class DSTMethod(BranchMethod):
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
-        try:
-            activeNode = self.activeNodes.pop()
-        except MyIndexError():
-            raise NodesExhausted()
+        #try:
+        activeNode = self.activeNodes.pop()
+        #except MyIndexError():
+        #    raise NodesExhausted()
+        if activeNode == None:
+            return None
         self.move(activeOld, activeNode)
         return activeNode
         

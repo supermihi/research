@@ -20,18 +20,27 @@ cdef class BranchMethod:
 	cdef Node getActiveNode(self, Node activeOld)
 
 	
-cdef class BFSMethod(BranchMethod):
+cdef class MyBFSMethod(BranchMethod):
 	cdef:
 		public myDeque activeNodes
-		
-	#cdef Node getActiveNode(self, Node activeOld)
+		public bint firstSolutionExists
 	
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef Node getActiveNode(self, Node activeOld)
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
-cdef class BFSRandom(BranchMethod):
+cdef class MyBFSRandom(BranchMethod):
+	cdef:
+		public myDeque activeNodes
+		public bint firstSolutionExists
+		
+	cdef Node getActiveNode(self, Node activeOld)
+	cdef void addNodes(self, Node node0, Node node1)
+	cdef void createNodes(self, int branchVariable, Node parent)
+	
+	
+cdef class MyBFSRound(BranchMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -43,20 +52,10 @@ cdef class BFSRandom(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
-cdef class BFSRound(BranchMethod):
+cdef class MyDFSMethod(BranchMethod):
 	cdef:
 		public myDeque activeNodes
-		
-	cdef Node getActiveNode(self, Node activeOld)
-	
-	cdef void addNodes(self, Node node0, Node node1)
-	
-	cdef void createNodes(self, int branchVariable, Node parent)
-	
-	
-cdef class DFSMethod(BranchMethod):
-	cdef:
-		public myDeque activeNodes
+		public bint firstSolutionExists
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	 
@@ -65,9 +64,10 @@ cdef class DFSMethod(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	 
 	 
-cdef class DFSRandom(BranchMethod):
+cdef class MyDFSRandom(BranchMethod):
 	cdef:
 		public myDeque activeNodes
+		public bint firstSolutionExists
 	
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -76,9 +76,10 @@ cdef class DFSRandom(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
-cdef class DFSRound(BranchMethod):
+cdef class MyDFSRound(BranchMethod):
 	cdef:
 		public myDeque activeNodes
+		public bint firstSolutionExists
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
@@ -98,9 +99,10 @@ cdef class BBSMethod(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
-cdef class DSTMethod(BranchMethod):
+cdef class MyDSTMethod(BranchMethod):
 	cdef:
 		public myDeque activeNodes
+		public bint firstSolutionExists
 		
 	cdef Node getActiveNode(self, Node activeOld)
 	
