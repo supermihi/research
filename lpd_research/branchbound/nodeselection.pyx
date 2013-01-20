@@ -13,6 +13,7 @@ from branchbound.myList cimport myDeque
 from branchbound.myList import MyIndexError
 from .bnb import NodesExhausted
 from lpdecoding.utils import stopwatch
+from branchbound.queue cimport Queue
 import numpy as np
 
 cdef class BranchMethod:
@@ -43,27 +44,21 @@ cdef class BranchMethod:
     cdef void move(self,Node fromNode, Node toNode):
         """Moves problem from fromNode to toNode.
         """
-#        print("i am in the movefunction")
-#        print("fromNode.depth: {}, toNode.depth: {}".format(fromNode.depth, toNode.depth))
         self.moveCount += 1
         fix = []
         #logging.debug('moving from {} to {}'.format(fromNode, toNode))
         while fromNode.depth > toNode.depth:
-#            print("move 1")
             self.problem.unfixVariable(fromNode.branchVariable)
             self.unfixCount += 1
             #logging.debug('unfix variable {}'.format(fromNode.branchVariable))
             fromNode = fromNode.parent
         
         while toNode.depth > fromNode.depth:
-#            print("move 2")
             fix.append( (toNode.branchVariable, toNode.branchValue) )
             self.fixCount += 1
             toNode = toNode.parent
-#            print("toNode: {}, fromNode: {}".format(toNode, fromNode))
             
         while toNode is not fromNode:
-#           print("move 3")
             #logging.debug('unfix variable* {}'.format(fromNode.branchVariable))
             self.problem.unfixVariable(fromNode.branchVariable)
             self.unfixCount = self.unfixCount +1
@@ -72,10 +67,39 @@ cdef class BranchMethod:
             toNode = toNode.parent
         #logging.debug("Fix list: {}".format(fix))
         for var, value in fix:
-#            print("move 4")
             self.problem.fixVariable(var, value)
             self.fixCount += 1
 
+cdef class BFSMethod(BranchMethod):
+    
+    def __init__(self, rootNode, problem):
+        BranchMethod.__init__(self, rootNode, problem)
+        self.activeNodes = Queue(rootNode)
+        
+    cdef Node getActiveNode(self, Node activeOld):
+        cdef:
+            Node activeNode
+        try:
+            activeNode = self.activeNodes.pop()
+        except IndexError():
+            return None
+        self.move(activeOld, activeNode)
+        with stopwatch() as timer:
+            self.problem.solve()
+        self.lpTime += timer.duration
+        activeNode.solution = self.problem.solution
+        activeNode.objectiveValue = self.problem.objectiveValue
+        #self.move(activeNode, activeOld)
+        return activeNode
+        
+    
+    cdef void addNodes(self, Node node0, Node node1):
+        self.activeNodes.append(node1)
+        self.activeNodes.append(node0)
+        
+    cdef void createNodes(self, int branchVariable, Node parent):
+        parent.child0 = Node(parent, branchVariable, 0)
+        parent.child1 = Node(parent, branchVariable, 1)
 
 cdef class MyBFSMethod(BranchMethod):
     

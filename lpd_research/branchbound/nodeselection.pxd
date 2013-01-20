@@ -1,5 +1,6 @@
 from branchbound.bnb cimport Node
 from branchbound.myList cimport myDeque
+from branchbound.queue cimport Queue
 #cimport heapq
 #from collections cimport deque
 
@@ -18,7 +19,15 @@ cdef class BranchMethod:
 	cdef void createNodes(self, int branchVariable, Node parent)
 	cdef void move(self, Node fromNode, Node toNode)
 	cdef Node getActiveNode(self, Node activeOld)
+	
+cdef class BFSMethod(BranchMethod):
+	cdef:
+		public Queue activeNodes
+		public bint firstSolutionExists
 
+	cdef void addNodes(self, Node node0, Node node1)
+	cdef Node getActiveNode(self, Node activeOld)
+	cdef void createNodes(self, int branchVariable, Node parent)
 	
 cdef class MyBFSMethod(BranchMethod):
 	cdef:
