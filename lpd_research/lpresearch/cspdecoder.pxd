@@ -19,7 +19,8 @@ cdef class CSPDecoder(Decoder):
         X, \
         codewords, paths
     cdef np.int_t k, lenS
-    cdef bint measureTimes, useHeuristic
+    cdef bint measureTimes
+    cdef int heuristic
     cdef int numEncoders
     cdef double current_ref
     cdef int NearestPointAlgorithm(self)
