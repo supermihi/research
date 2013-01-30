@@ -32,7 +32,7 @@ if __name__ == "__main__":
     code = StandardTurboCode(LTEEncoder(), interleaver, "smallTestCode")
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
-    nodeSelectionMethods = [nodeselection.DFSandBBSMethod]
+    #nodeSelectionMethods = [nodeselection.DFSandBBSMethod]
 #    nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
 #                            nodeselection.BFSRandom, nodeselection.BFSRound, \
 #                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
@@ -43,6 +43,7 @@ if __name__ == "__main__":
     #nodeSelectionMethods = nodeselection.MyDFSMethod, nodeselection.MyDFSRandom#, \
     #nodeSelectionMethods = nodeselection.MyDFSRound, nodeselection.MyDSTMethod#, \
 #                           #nodeselection.DFSandBBSMethod
+    nodeSelectionMethods = [nodeselection.MyDFSMethod, nodeselection.DFSMethod]
                            
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \

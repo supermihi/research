@@ -1,5 +1,6 @@
 from branchbound.bnb cimport Node
 from branchbound.myList cimport myDeque
+from branchbound.problem cimport Problem
 #from branchbound.queue import Queue
 import heapq
 from collections import deque
@@ -7,7 +8,7 @@ from collections import deque
 cdef class BranchMethod:
 	cdef:
 		public Node root
-		public object problem
+		public Problem problem
 		public bint FirstSolutionExists
 		public double lpTime
 		public int moveCount
