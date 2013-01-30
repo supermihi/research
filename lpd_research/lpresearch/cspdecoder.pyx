@@ -184,9 +184,6 @@ cdef class CSPDecoder(Decoder):
             self.w[0] = 1
             self.calculateSolution()
             self.objectiveValue = X[self.k]
-            if self.heuristic == 2:
-                # later rescaling is done only if heuristic == 0, so we do it now
-                self.objectiveValue *= 10
             self.mlCertificate = self.foundCodeword = True
             try:
                 self.stats["immediateSolutions"] += 1
@@ -248,7 +245,7 @@ cdef class CSPDecoder(Decoder):
                 for k in range(self.lenS):
                     for i in range(self.numEncoders):
                         codeword = self.code.encodePath(paths[self.S[k],i], self.code.encoders[i])
-                        result = np.dot(codeword, self.llrVector)
+                        result = np.dot(codeword, self.llrVector)/10
                         if result < self.objectiveValue:
                             self.objectiveValue = result
                             self.solution = codeword
@@ -257,8 +254,9 @@ cdef class CSPDecoder(Decoder):
                 # heuristic 2: we have already recorded the best path, nothing left to do
                 self.foundCodeword = True
             else:
-                self.objectiveValue = self.current_ref * 10
+                self.objectiveValue = self.current_ref
                 self.calculateSolution()
+        self.objectiveValue *= 10
         if self.measureTimes:
             if "sp_time" not in self.stats:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = 0
@@ -596,7 +594,7 @@ cdef class CSPDecoder(Decoder):
                 if self.heuristic == 2:
                     # 2nd heuristic: test every info-connected path if it improves objective value
                     encoded = self.code.encodePath(paths[i,:], enc)
-                    tmp = np.dot(encoded, self.llrVector)
+                    tmp = np.dot(encoded, self.llrVector)/10
                     if tmp < self.objectiveValue:
                         self.objectiveValue = tmp
                         self.solution = encoded
