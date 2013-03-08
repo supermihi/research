@@ -76,22 +76,40 @@ labelStr = { _INFO: "info", _PARITY: "parity"}
 cdef class CSPDecoder(Decoder):
     """Constrained Shortest Path Decoder."""
     
-    def __init__(self, code, name=None, maxMajorCycles=0, measureTimes=False, useHeuristic=False):
+    def __init__(self, code, name=None, maxMajorCycles=0, measureTimes=False, heuristic=0):
         """Initialize the decoder for a *code* and name it *name*.
         
         Optionally you may supply *maxMajorCycles* to limit the maximum number of major cycles
         (nearest point calculations) performed. A value of 0 means no limit.
+        
+        If *measureTimes* is True, various subprocedures of the algorithm will be time-meaasured;
+        the timings are stored in the attributes self.*_time. This might slightly increase the
+        running time.
+        
+        Two heuristics can be optionally enabled by the *heuristic* parameter to improve
+        error-correcting performance. The default is 0 and means no heuristic. Only in this case
+        the decoder has the ML certificate. Details on heuristics 1 and 2 can be found in the paper
+        "Towards Combinatorial LP Decoding" by M. Helmling and S. Ruzika (there, they are called
+        Heuristic A and B, respectively).         
         """
-           
+
         Decoder.__init__(self, code)
         self.constraints = code.equalityPairs()
         self.k = len(self.constraints)
         self.blocklength = code.blocklength
         self.maxMajorCycles = maxMajorCycles
         self.measureTimes = measureTimes
-        self.useHeuristic = useHeuristic
+        self.heuristic = heuristic
         if name is None:
-            name = "CSPDecoder" 
+            name = "CSPDecoder"
+            if measureTimes:
+                name += "Time"
+            if heuristic == 1:
+                name += "HeuristicA"
+            elif heuristic == 2:
+                name += "HeuristicB"
+            if maxMajorCycles != 0:
+                name += "(maxCycles={})".format(maxMajorCycles)
         self.name = name
         #=======================================================================
         # Set coefficients and indices for constraints g_i on the involved
@@ -119,7 +137,7 @@ cdef class CSPDecoder(Decoder):
         self.w = np.empty(self.k+2)
         self.RHS = np.empty((self.k+2, self.k+2))
         self.codewords = np.empty((self.k+2, self.blocklength), dtype=np.double)
-        if useHeuristic:
+        if heuristic != 0:
             self.numEncoders = len([enc for enc in code.encoders if enc.isInfoConnected])
             maxTrellisLength = max(enc.trellis.length for enc in code.encoders if enc.isInfoConnected)
             self.paths = np.empty( (self.k+2, self.numEncoders, maxTrellisLength), dtype=np.int)
@@ -140,20 +158,21 @@ cdef class CSPDecoder(Decoder):
         if self.measureTimes:
             self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.setcost_time = 0
             self.timer.start()
-        self.code.setCost(.1*self.llrVector)
+        self.code.setCost(.1*self.llrVector) # scale cost by 1/10 for increased numericial stability
         if self.measureTimes:
             self.setcost_time += self.timer.stop()
         
-        #  find path with minimum cost
+        #  find path with minimum overall cost (ignoring constraints)
         for k in range(self.k):
             direction[k] = 0
         direction[self.k] = 1
-        if self.useHeuristic:
+        if self.heuristic != 0:
             result = self.solveScalarization(direction, X, codewords[0,:], paths[0,:,:])
-            self.objectiveValue = 0
+            if self.heuristic == 2:
+                self.objectiveValue = 0
         else:
             result = self.solveScalarization(direction, X, codewords[0,:])
-        if result == -2:
+        if result == -2: # -2 indicates infinite path cost
             self.objectiveValue = inf
             self.solution = None
             return
@@ -165,8 +184,6 @@ cdef class CSPDecoder(Decoder):
             self.w[0] = 1
             self.calculateSolution()
             self.objectiveValue = X[self.k]
-            if self.useHeuristic:
-                self.objectiveValue *= 10
             self.mlCertificate = self.foundCodeword = True
             try:
                 self.stats["immediateSolutions"] += 1
@@ -222,23 +239,24 @@ cdef class CSPDecoder(Decoder):
             # if the LP solution is convex combination of only 1 vertex, it must
             # be a codeword (and thus, ML certificate is present)
             self.mlCertificate = self.foundCodeword = (self.lenS==1)
-            
-            if self.useHeuristic:
+            if self.heuristic == 1 and self.lenS > 1:
+                # heuristic 1: use best path among vertices of the convex combination
+                self.objectiveValue = 0
+                for k in range(self.lenS):
+                    for i in range(self.numEncoders):
+                        codeword = self.code.encodePath(paths[self.S[k],i], self.code.encoders[i])
+                        result = np.dot(codeword, self.llrVector)/10
+                        if result < self.objectiveValue:
+                            self.objectiveValue = result
+                            self.solution = codeword
+                            self.foundCodeword = True
+            elif self.heuristic == 2:
+                # heuristic 2: we have already recorded the best path, nothing left to do
                 self.foundCodeword = True
-#                self.objectiveValue = 0
-#                for k in range(self.lenS):
-#                    for i in range(self.numEncoders):
-#                        codeword = self.code.encodePath(paths[self.S[k],i], self.code.encoders[i])
-#                        result = np.dot(codeword, self.llrVector)
-#                        if result < self.objectiveValue:
-#                            self.objectiveValue = result
-#                            self.solution = codeword
-#                            self.foundCodeword = True
             else:
                 self.objectiveValue = self.current_ref
                 self.calculateSolution()
-        if not self.useHeuristic:
-            self.objectiveValue *= 10
+        self.objectiveValue *= 10
         if self.measureTimes:
             if "sp_time" not in self.stats:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = 0
@@ -348,7 +366,7 @@ cdef class CSPDecoder(Decoder):
             # Step 1. (b): P_J = ArgMin(X^T P: P in Polytope)
             if self.measureTimes:
                 self.timer.start()
-            if self.useHeuristic:
+            if self.heuristic != 0:
                 self.solveScalarization(X, P[:, newIndex], codewords[newIndex,:], paths[newIndex,:,:])
             else:
                 self.solveScalarization(X, P[:, newIndex], codewords[newIndex,:])
@@ -571,13 +589,15 @@ cdef class CSPDecoder(Decoder):
         for k in range(self.blocklength):
             codeword[k] = 0
         for i, enc in enumerate(self.code.encoders):
-            if self.useHeuristic and enc.isInfoConnected:
+            if self.heuristic != 0 and enc.isInfoConnected:
                 c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword, paths[i,:])
-                encoded = self.code.encodePath(paths[i,:], enc)
-                tmp = np.dot(encoded, self.llrVector)
-                if tmp < self.objectiveValue:
-                    self.objectiveValue = tmp
-                    self.solution = encoded
+                if self.heuristic == 2:
+                    # 2nd heuristic: test every info-connected path if it improves objective value
+                    encoded = self.code.encodePath(paths[i,:], enc)
+                    tmp = np.dot(encoded, self.llrVector)/10
+                    if tmp < self.objectiveValue:
+                        self.objectiveValue = tmp
+                        self.solution = encoded
             else:
                 c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword)
             if c_result == inf:
@@ -658,7 +678,7 @@ cdef class CSPDecoder(Decoder):
         return OrderedDict([("name", self.name),
                             ("maxMajorCycles", self.maxMajorCycles),
                             ("measureTimes", self.measureTimes),
-                            ("useHeuristic", self.useHeuristic)])
+                            ("heuristic", self.heuristic)])
 
 
 class NDFInteriorDecoder(Decoder):

@@ -22,7 +22,7 @@ cdef class Problem(object):
         self.solution = None
         self.objectiveValue = np.inf 
     
-    cpdef solve(self):
+    cdef solve(self):
         """Solve the current problem.
         
         After solving, attributes *solution* and *objectiveValue* are available. If the
@@ -70,7 +70,7 @@ cdef class CSPTurboLPProblem(Problem):
         self.decoder.llrVector = c
         self.unfixVariables(range(self.code.blocklength))
         
-    cpdef solve(self):
+    cdef solve(self):
 #        self.checkProblem.solve()        
         self.decoder.solve()
         self.objectiveValue = self.decoder.objectiveValue
@@ -96,7 +96,7 @@ cdef class CSPTurboLPProblem(Problem):
         self.code.fixCodeBit(var, -1)       
 
 
-class CplexTurboLPProblem(Problem):
+cdef class CplexTurboLPProblem(Problem):
     
     def __init__(self, code):
         Problem.__init__(self)
@@ -107,7 +107,7 @@ class CplexTurboLPProblem(Problem):
         self.decoder.llrVector = c
         self.unfixVariables(self.decoder.x)
         
-    def solve(self):
+    cdef solve(self):
         try:
             self.decoder.solve()
             if not self.decoder.cplex.solution.is_primal_feasible():

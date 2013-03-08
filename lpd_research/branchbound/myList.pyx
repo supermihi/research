@@ -11,7 +11,7 @@ from branchbound.bnb cimport Node
 
 cdef class dequeNode:
     
-    def __init__(self, dequeNode pre=None, dequeNode post=None, Node element=None):
+    def __cinit__(self, dequeNode pre, dequeNode post, Node element):
         self.pre = pre
         self.element = element
         self.post = post
@@ -21,10 +21,8 @@ class MyIndexError(Exception):
 
 cdef class myDeque:
     
-    def __init__(self, Node start=None):
-        startNode = dequeNode(None, None, start)
-        self.first = startNode
-        self.last = startNode
+    def __cinit__(self, Node start):
+        self.first = self.last = dequeNode(None, None, start)
         if start is not None:
             self.length = 1
         else:
@@ -75,7 +73,7 @@ cdef class myDeque:
     cdef void append(self, Node nextNode):
 #        print("append function used")
 #        print("self.last: {}".format(self.last))
-        nextDequeNode = dequeNode(self.last, None, nextNode)
+        cdef dequeNode nextDequeNode = dequeNode(self.last, None, nextNode)
 #       print("i got a nextDequeNode")
 #       print("length: {}".format(self.length))
         if self.length == 0:
