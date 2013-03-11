@@ -53,7 +53,6 @@ cdef class BranchAndBound:
             if not isinstance(activeNew, Node):
                 #print("i shouldnt be here")
                 break
-            
 
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
@@ -114,14 +113,16 @@ cdef class BranchAndBound:
         self.lpTime = self.selectionMethod.lpTime
         self.moveTime = self.selectionMethod.moveTime 
         #to measure the time used for solving lps / functions in percent
-        self.lpVsAll = self.lpTime / self.time
-        self.boundVsAll = self.boundTime / self.time
-        self.refreshVsAll = self.refreshTime / self.time
-        self.getVsAll = self.getTime / self.time
-        self.addVsAll = self.addTime / self.time
-        self.createVsAll = self.createTime / self.time
-        self.moveVsAll = self.moveTime / self.time
-        self.selectionVsAll = self.selectionTime / self.time
+        print(self.time)
+        print(self.lpTime)
+        self.lpVsAll = self.lpTime / self.time if self.time > 0 else 0
+        self.boundVsAll = self.boundTime / self.time if self.time > 0 else 0
+        self.refreshVsAll = self.refreshTime / self.time if self.time > 0 else 0
+        self.getVsAll = self.getTime / self.time if self.time > 0 else 0
+        self.addVsAll = self.addTime / self.time if self.time > 0 else 0
+        self.createVsAll = self.createTime / self.time if self.time > 0 else 0
+        self.moveVsAll = self.moveTime / self.time if self.time > 0 else 0
+        self.selectionVsAll = self.selectionTime / self.time if self.time > 0 else 0
         #self.lpVsAll = self.lpTime / (self.time + self.lpTime)
         logging.debug("******* optimal solution found *******")
         logging.debug(self.optimalSolution)
