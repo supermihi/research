@@ -62,7 +62,7 @@ cdef class CSPTurboLPProblem(Problem):
     def __init__(self, code):
         Problem.__init__(self)
 #        self.checkProblem = CplexTurboLPProblem(code)
-        self.decoder = cspdecoder.CSPDecoder(code)
+        self.decoder = cspdecoder.CSPDecoder(code, heuristic=1, keepLP=True)
         self.code = code
         
     cpdef setObjectiveFunction(self, np.ndarray[ndim=1, dtype=np.double_t] c):

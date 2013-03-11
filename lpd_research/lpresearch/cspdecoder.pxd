@@ -19,7 +19,7 @@ cdef class CSPDecoder(Decoder):
         X, \
         codewords, paths
     cdef np.int_t k, lenS
-    cdef bint measureTimes
+    cdef bint measureTimes, keepLP
     cdef int heuristic
     cdef int numEncoders
     cdef double current_ref
@@ -32,3 +32,6 @@ cdef class CSPDecoder(Decoder):
     cdef void calculateSolution(self)
     cdef int innerLoop(self)
     cdef StopWatch timer
+    # heuristic solution and objective value
+    cdef double hObjectiveValue
+    cdef np.ndarray hSolution

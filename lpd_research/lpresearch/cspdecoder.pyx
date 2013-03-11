@@ -76,7 +76,7 @@ labelStr = { _INFO: "info", _PARITY: "parity"}
 cdef class CSPDecoder(Decoder):
     """Constrained Shortest Path Decoder."""
     
-    def __init__(self, code, name=None, maxMajorCycles=0, measureTimes=False, heuristic=0):
+    def __init__(self, code, name=None, maxMajorCycles=0, measureTimes=False, heuristic=0, keepLP=False):
         """Initialize the decoder for a *code* and name it *name*.
         
         Optionally you may supply *maxMajorCycles* to limit the maximum number of major cycles
@@ -100,6 +100,7 @@ cdef class CSPDecoder(Decoder):
         self.maxMajorCycles = maxMajorCycles
         self.measureTimes = measureTimes
         self.heuristic = heuristic
+        self.keepLP = keepLP
         if name is None:
             name = "CSPDecoder"
             if measureTimes:
@@ -158,7 +159,7 @@ cdef class CSPDecoder(Decoder):
         if self.measureTimes:
             self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.setcost_time = 0
             self.timer.start()
-        self.code.setCost(.1*self.llrVector) # scale cost by 1/10 for increased numericial stability
+        self.code.setCost(0.1*self.llrVector) # scale cost by 1/10 for increased numericial stability
         if self.measureTimes:
             self.setcost_time += self.timer.stop()
         
@@ -169,7 +170,7 @@ cdef class CSPDecoder(Decoder):
         if self.heuristic != 0:
             result = self.solveScalarization(direction, X, codewords[0,:], paths[0,:,:])
             if self.heuristic == 2:
-                self.objectiveValue = 0
+                self.hObjectiveValue = 0
         else:
             result = self.solveScalarization(direction, X, codewords[0,:])
         if result == -2: # -2 indicates infinite path cost
@@ -183,7 +184,8 @@ cdef class CSPDecoder(Decoder):
             self.S[0] = 0
             self.w[0] = 1
             self.calculateSolution()
-            self.objectiveValue = X[self.k]
+            self.hSolution = self.solution
+            self.objectiveValue = self.hObjectiveValue = X[self.k]
             self.mlCertificate = self.foundCodeword = True
             try:
                 self.stats["immediateSolutions"] += 1
@@ -241,22 +243,26 @@ cdef class CSPDecoder(Decoder):
             self.mlCertificate = self.foundCodeword = (self.lenS==1)
             if self.heuristic == 1 and self.lenS > 1:
                 # heuristic 1: use best path among vertices of the convex combination
-                self.objectiveValue = 0
+                self.hObjectiveValue = 0
                 for k in range(self.lenS):
                     for i in range(self.numEncoders):
                         codeword = self.code.encodePath(paths[self.S[k],i], self.code.encoders[i])
                         result = np.dot(codeword, self.llrVector)/10
-                        if result < self.objectiveValue:
-                            self.objectiveValue = result
-                            self.solution = codeword
-                            self.foundCodeword = True
-            elif self.heuristic == 2:
-                # heuristic 2: we have already recorded the best path, nothing left to do
-                self.foundCodeword = True
-            else:
+                        if result < self.hObjectiveValue:
+                            self.hObjectiveValue = result
+                            self.hSolution = codeword
+            if self.heuristic == 0 or self.keepLP or (self.heuristic == 1 and self.lenS == 1):
                 self.objectiveValue = self.current_ref
                 self.calculateSolution()
+                if self.heuristic == 1 and self.lenS == 1:
+                    self.hObjectiveValue = self.objectiveValue
+                    self.hSolution = self.solution
+            else:
+                self.foundCodeword = True
+                self.solution = self.hSolution
+                self.objectiveValue = self.hObjectiveValue
         self.objectiveValue *= 10
+        self.hObjectiveValue *= 10
         if self.measureTimes:
             if "sp_time" not in self.stats:
                 self.stats["lstsq_time"] = self.stats["sp_time"] = 0
@@ -595,9 +601,9 @@ cdef class CSPDecoder(Decoder):
                     # 2nd heuristic: test every info-connected path if it improves objective value
                     encoded = self.code.encodePath(paths[i,:], enc)
                     tmp = np.dot(encoded, self.llrVector)/10
-                    if tmp < self.objectiveValue:
-                        self.objectiveValue = tmp
-                        self.solution = encoded
+                    if tmp < self.hObjectiveValue:
+                        self.hObjectiveValue = tmp
+                        self.hSolution = encoded
             else:
                 c_result += shortestPathScalarization(enc.trellis, lamb, direction, result, codeword)
             if c_result == inf:
