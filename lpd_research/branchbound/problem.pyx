@@ -78,6 +78,8 @@ cdef class CSPTurboLPProblem(Problem):
             self.solution = None
         else:
             self.solution = self.decoder.solution
+            self.hSolution = self.decoder.hSolution
+            self.hObjectiveValue = self.decoder.hObjectiveValue
 #        if not np.isclose(self.objectiveValue, self.checkProblem.objectiveValue, rtol=1e-5):
 #            print('unequal: {} != {}'.format(self.objectiveValue, self.checkProblem.objectiveValue))
 #            print(self.printFixes())

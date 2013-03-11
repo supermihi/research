@@ -33,5 +33,5 @@ cdef class CSPDecoder(Decoder):
     cdef int innerLoop(self)
     cdef StopWatch timer
     # heuristic solution and objective value
-    cdef double hObjectiveValue
-    cdef np.ndarray hSolution
+    cdef public double hObjectiveValue
+    cdef public np.ndarray hSolution
