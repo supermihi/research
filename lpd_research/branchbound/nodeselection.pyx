@@ -23,6 +23,7 @@ cdef class BranchMethod:
         self.problem = problem
         self.FirstSolutionExists = False
         self.lpTime = 0
+        self.moveTime = 0
         self.moveCount = 0
         self.fixCount = 0
         self.unfixCount = 0
@@ -83,7 +84,9 @@ cdef class BFSMethod(BranchMethod):
             activeNode = self.activeNodes.pop()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -115,7 +118,9 @@ cdef class MyBFSMethod(BranchMethod):
         #    raise NodesExhausted()
         if activeNode == None:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -146,7 +151,9 @@ cdef class BFSRandom(BranchMethod):
             activeNode = self.activeNodes.popleft()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -186,7 +193,9 @@ cdef class MyBFSRandom(BranchMethod):
             return None
 #        except MyIndexError():
 #            raise NodesExhausted()
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -225,7 +234,9 @@ cdef class BFSRound(BranchMethod):
             activeNode = self.activeNodes.popleft()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -272,7 +283,9 @@ cdef class MyBFSRound(BranchMethod):
 #            raise NodesExhausted()
         if activeNode == None:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -318,7 +331,9 @@ cdef class DFSMethod(BranchMethod):
             activeNode = self.activeNodes.pop()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -350,7 +365,9 @@ cdef class MyDFSMethod(BranchMethod):
             return None
         #except MyIndexError():
             #raise NodesExhausted()
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -381,7 +398,9 @@ cdef class DFSRandom(BranchMethod):
             activeNode = self.activeNodes.pop()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -420,7 +439,9 @@ cdef class MyDFSRandom(BranchMethod):
         #    raise NodesExhausted()
         if activeNode == None:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -458,7 +479,9 @@ cdef class DFSRound(BranchMethod):
             activeNode = self.activeNodes.pop()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -505,7 +528,9 @@ cdef class MyDFSRound(BranchMethod):
         #    raise NodesExhausted()
         if activeNode == None:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -556,7 +581,9 @@ cdef class BBSMethod(BranchMethod):
             activeNode = heapq.heappop(self.activeNodes)[1]
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         return activeNode
          
     cdef void addNodes(self, Node node0, Node node1):
@@ -603,7 +630,9 @@ cdef class DSTMethod(BranchMethod):
             activeNode = self.activeNodes.pop()
         except IndexError:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         return activeNode
         
     cdef void addNodes(self, Node node0, Node node1):
@@ -655,7 +684,9 @@ cdef class MyDSTMethod(BranchMethod):
         #    raise NodesExhausted()
         if activeNode == None:
             return None
-        self.move(activeOld, activeNode)
+        with stopwatch() as moveTimer:
+            self.move(activeOld, activeNode)
+        self.moveTime += moveTimer.duration
         return activeNode
         
     cdef void addNodes(self, Node node0, Node node1):
@@ -701,7 +732,9 @@ cdef class DFSandBBSMethod(BranchMethod):
                 activeNode = self.activeNodes.pop()
             except IndexError:
                 return None
-            self.move(activeOld, activeNode)
+            with stopwatch() as moveTimer:
+                self.move(activeOld, activeNode)
+            self.moveTime += moveTimer.duration
             with stopwatch() as timer:
                 self.problem.solve()
             self.lpTime += timer.duration
@@ -714,7 +747,9 @@ cdef class DFSandBBSMethod(BranchMethod):
                 activeNode = heapq.heappop(self.activeNodes)[1]
             except IndexError:
                 return None
-            self.move(activeOld, activeNode)
+            with stopwatch() as moveTimer:
+                self.move(activeOld, activeNode)
+            self.moveTime += moveTimer.duration
             return activeNode
         
     cdef void addNodes(self, Node node0, Node node1):
@@ -767,7 +802,9 @@ cdef class DFSandBBSMethod(BranchMethod):
 #            heapq.heappush(newNodes, (moveNode.lowerb, moveNode))
 #            activeOld = moveNode
         for i in self.activeNodes:
-            self.move(activeOld, i)
+            with stopwatch() as moveTimer:
+                self.move(activeOld, i)
+            self.moveTime += moveTimer.duration
             with stopwatch() as timer:
                 self.problem.solve()
             self.lpTime += timer.duration
@@ -775,6 +812,8 @@ cdef class DFSandBBSMethod(BranchMethod):
             i.objectiveValue = self.problem.objectiveValue
             heapq.heappush(newNodes, (i.lowerb, i))
             activeOld = i
-        self.move(activeOld, oldNode)            
+        with stopwatch() as moveTimer:
+            self.move(activeOld, oldNode)            
+        self.moveTime += moveTimer.duration
         #self.moveCount += 1
     

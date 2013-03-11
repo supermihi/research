@@ -14,6 +14,7 @@ cdef class BranchMethod:
 		public int moveCount
 		public int fixCount
 		public int unfixCount
+		public double moveTime
 	
 	cdef void refreshActiveNodes(self, Node activeOld)
 	cdef void addNodes(self, Node node0, Node node1)

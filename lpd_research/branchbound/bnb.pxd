@@ -14,6 +14,20 @@ cdef class BranchAndBound:
         public double time
         public double lpTime
         public double lpVsAll
+        public double getTime
+        public double selectionTime
+        public double refreshTime
+        public double boundTime
+        public double createTime
+        public double addTime
+        public double moveTime
+        public double boundVsAll
+        public double refreshVsAll
+        public double getVsAll
+        public double addVsAll
+        public double createVsAll
+        public double moveVsAll
+        public double selectionVsAll
     
     cdef void updBound(self, Node node)
 

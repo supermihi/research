@@ -9,7 +9,7 @@ from __future__ import print_function
 from libc.math cimport fmin
 import numpy as np
 import logging
-from lpdecoding.utils import StopWatch
+from lpdecoding.utils import StopWatch, stopwatch
 
 cdef class BranchAndBound:
     
@@ -23,6 +23,13 @@ cdef class BranchAndBound:
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
+        self.refreshTime = 0
+        self.getTime = 0
+        self.addTime = 0
+        self.createTime = 0
+        self.moveTime = 0
+        self.selectionTime = 0
+        self.boundTime = 0
         #self.getActiveNode = selectionMethod
     
     def run(self):
@@ -39,7 +46,9 @@ cdef class BranchAndBound:
             #logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
             #select one of the active nodes, move there and (solve the corresponding problem)
             #try:
-            activeNew = self.selectionMethod.getActiveNode(activeOld)
+            with stopwatch() as getTimer:
+                activeNew = self.selectionMethod.getActiveNode(activeOld)
+            self.getTime += getTimer.duration
             #except NodesExhausted:
             if not isinstance(activeNew, Node):
                 #print("i shouldnt be here")
@@ -49,7 +58,9 @@ cdef class BranchAndBound:
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
-                branchVariable = self.branchRule.selectVariable(activeNew.solution)
+                with stopwatch() as selectionTimer:
+                    branchVariable = self.branchRule.selectVariable(activeNew.solution)
+                self.selectionTime += selectionTimer.duration
                 #print("branchVariable: {}".format(branchVariable))
                 logging.debug('branchVariable: {}'.format(branchVariable))
                 #update bounds of all nodes if neccesary
@@ -62,14 +73,18 @@ cdef class BranchAndBound:
                         if self.optimalSolution is None:
                             logging.info("first feasible solution after {} steps".format(branchCount))
                             self.selectionMethod.firstSolutionExists = True
-                            self.selectionMethod.refreshActiveNodes(activeNew)
+                            with stopwatch() as refreshTimer:
+                                self.selectionMethod.refreshActiveNodes(activeNew)
+                            self.refreshTime += refreshTimer.duration
                         # found new global optimum
                         self.optimalSolution = activeNew.solution
                         self.optimalObjectiveValue = activeNew.objectiveValue
                     logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
                     activeNew.upperb = activeNew.objectiveValue
-                self.updBound(activeNew)
-            
+                with stopwatch() as boundTimer:
+                    self.updBound(activeNew)
+                self.boundTime += boundTimer.duration
+                
                 #create new children or close branch
                 if activeNew.lowerb > self.root.upperb:
                     pass
@@ -79,23 +94,34 @@ cdef class BranchAndBound:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
-                    self.selectionMethod.createNodes(branchVariable, activeNew)
-                    self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
+                    with stopwatch() as createTimer:
+                        self.selectionMethod.createNodes(branchVariable, activeNew)
+                    self.createTime += createTimer.duration
+                    with stopwatch() as addTimer:
+                        self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
+                    self.addTime += addTimer.duration
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf
                 self.updBound(activeNew)
             activeOld = activeNew
-        
-            
+           
         self.moveCount = self.selectionMethod.moveCount
         self.fixCount = self.selectionMethod.fixCount
         self.unfixCount = self.selectionMethod.unfixCount
         self.branchCount = branchCount
         self.time = timer.stop()
         self.lpTime = self.selectionMethod.lpTime
-        #to measure the time used for solving lps in percent
+        self.moveTime = self.selectionMethod.moveTime 
+        #to measure the time used for solving lps / functions in percent
         self.lpVsAll = self.lpTime / self.time
+        self.boundVsAll = self.boundTime / self.time
+        self.refreshVsAll = self.refreshTime / self.time
+        self.getVsAll = self.getTime / self.time
+        self.addVsAll = self.addTime / self.time
+        self.createVsAll = self.createTime / self.time
+        self.moveVsAll = self.moveTime / self.time
+        self.selectionVsAll = self.selectionTime / self.time
         #self.lpVsAll = self.lpTime / (self.time + self.lpTime)
         logging.debug("******* optimal solution found *******")
         logging.debug(self.optimalSolution)
