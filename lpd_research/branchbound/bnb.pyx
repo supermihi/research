@@ -53,6 +53,13 @@ cdef class BranchAndBound:
             if not isinstance(activeNew, Node):
                 #print("i shouldnt be here")
                 break
+            
+            #use heuristic objective Value as upper bound
+            if activeNew.hSolution is not None:
+                activeNew.upperb = activeNew.hObjectiveValue
+#                with stopwatch() as boundTimer:
+#                    self.updBound(activeNew)
+#                self.boundTime += boundTimer.duration
 
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
@@ -80,6 +87,16 @@ cdef class BranchAndBound:
                         self.optimalObjectiveValue = activeNew.objectiveValue
                     logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
                     activeNew.upperb = activeNew.objectiveValue
+                # if i found a branchvariable we use the heuristic solution as possible new optimum
+                else:
+                    if self.optimalObjectiveValue > activeNew.hObjectiveValue:
+                        if self.optimalSolution is None:
+                            self.selectionMethod.firstSolutionExists = True
+                            with stopwatch() as refreshTimer:
+                                self.selectionMethod.refreshActiveNodes(activeNew)
+                            self.refreshTime += refreshTimer.duration
+                        self.optimalSolution = activeNew.hSolution
+                        self.optimalObjectiveValue = activeNew.hObjectiveValue
                 with stopwatch() as boundTimer:
                     self.updBound(activeNew)
                 self.boundTime += boundTimer.duration
@@ -102,7 +119,9 @@ cdef class BranchAndBound:
                     branchCount += 1
             else:
                 activeNew.lowerb = np.inf
-                self.updBound(activeNew)
+                with stopwatch() as boundTimer:
+                    self.updBound(activeNew)
+                self.boundTime += boundTimer.duration
             activeOld = activeNew
            
         self.moveCount = self.selectionMethod.moveCount
@@ -182,6 +201,8 @@ cdef class Node:
         self.child1 = None
         #nec to use BestBound
         self.solution = None
+        self.hSolution = None
+        self.hObjectiveValue = np.inf
         self.objectiveValue = np.inf
         
         self.branchVariable = branchVariable

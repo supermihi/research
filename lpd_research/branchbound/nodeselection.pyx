@@ -92,6 +92,8 @@ cdef class BFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -126,6 +128,8 @@ cdef class MyBFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
            
@@ -159,6 +163,8 @@ cdef class BFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
           
@@ -201,6 +207,8 @@ cdef class MyBFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
          
@@ -242,6 +250,8 @@ cdef class BFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode       
     
@@ -291,6 +301,8 @@ cdef class MyBFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -339,6 +351,8 @@ cdef class DFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -373,6 +387,8 @@ cdef class MyDFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -406,6 +422,8 @@ cdef class DFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -447,6 +465,8 @@ cdef class MyDFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -487,6 +507,8 @@ cdef class DFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -536,6 +558,8 @@ cdef class MyDFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
+        activeNode.hSolution = self.problem.hSolution
+        activeNode.hObjectiveValue = self.problem.hObjectiveValue
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -572,6 +596,8 @@ cdef class BBSMethod(BranchMethod):
         self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.root.lowerb = self.problem.objectiveValue
+        self.root.hSolution = self.problem.hSolution
+        self.root.hObjectiveValue = self.root.upperb = self.problem.hObjectiveValue
         self.activeNodes = [ (rootNode.lowerb, rootNode) ]
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -598,6 +624,8 @@ cdef class BBSMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
+        parent.child0.hSolution = self.problem.hSolution
+        parent.child0.hObjectiveValue = self.problem.hObjectiveValue
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
@@ -606,6 +634,8 @@ cdef class BBSMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
+        parent.child1.hSolution = self.problem.hSolution
+        parent.child1.hObjectiveValue = self.problem.hObjectiveValue
         self.problem.unfixVariable(branchVariable)
         self.unfixCount += 2
         self.fixCount += 2              
@@ -622,6 +652,8 @@ cdef class DSTMethod(BranchMethod):
         self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.problem.objectiveValue
+        self.root.hSolution = self.problem.hSolution
+        self.root.hObjectiveValue = self.problem.hObjectiveValue
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
@@ -651,6 +683,8 @@ cdef class DSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
+        parent.child0.hSolution = self.problem.hSolution
+        parent.child0.hObjectiveValue = self.problem.hObjectiveValue
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
@@ -659,6 +693,8 @@ cdef class DSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
+        parent.child1.hSolution = self.problem.hSolution
+        parent.child1.hObjectiveValue = self.problem.hObjectiveValue
         self.problem.unfixVariable(branchVariable) 
         self.unfixCount += 2
         self.fixCount += 2
@@ -674,6 +710,8 @@ cdef class MyDSTMethod(BranchMethod):
         self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.problem.objectiveValue
+        self.root.hSolution = self.problem.hSolution
+        self.root.hObjectiveValue = self.problem.hObjectiveValue
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
@@ -705,6 +743,8 @@ cdef class MyDSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
+        parent.child0.hSolution = self.problem.hSolution
+        parent.child0.hObjectiveValue = self.problem.hObjectiveValue
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
@@ -713,6 +753,8 @@ cdef class MyDSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
+        parent.child1.hSolution = self.problem.hSolution
+        parent.child1.hObjectiveValue = self.problem.hObjectiveValue
         self.problem.unfixVariable(branchVariable) 
         self.unfixCount += 2
         self.fixCount += 2
@@ -740,6 +782,8 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             activeNode.solution = self.problem.solution
             activeNode.objectiveValue = self.problem.objectiveValue
+            activeNode.hSolution = self.problem.hSolution
+            activeNode.hObjectiveValue = self.problem.hObjectiveValue
             #self.move(activeNode, activeOld)
             return activeNode
         else:
@@ -772,6 +816,8 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             parent.child0.solution = self.problem.solution
             parent.child0.objectiveValue = self.problem.objectiveValue
+            parent.child0.hSolution = self.problem.hSolution
+            parent.child0.hObjectiveValue = self.problem.hObjectiveValue
             self.problem.unfixVariable(branchVariable)
             parent.child1 = Node(parent, branchVariable, 1)
             self.problem.fixVariable(branchVariable, 1)
@@ -780,6 +826,8 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             parent.child1.solution = self.problem.solution
             parent.child1.objectiveValue = self.problem.objectiveValue
+            parent.child1.hSolution = self.problem.hSolution
+            parent.child1.hObjectiveValue = self.problem.hObjectiveValue
             self.problem.unfixVariable(branchVariable)
             
     cdef void refreshActiveNodes(self, Node activeOld):
@@ -810,6 +858,8 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             i.solution = self.problem.solution
             i.objectiveValue = self.problem.objectiveValue
+            i.hSolution = self.problem.hSolution
+            i.hObjectiveValue = self.problem.hObjectiveValue
             heapq.heappush(newNodes, (i.lowerb, i))
             activeOld = i
         with stopwatch() as moveTimer:

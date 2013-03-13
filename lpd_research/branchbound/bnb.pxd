@@ -37,6 +37,8 @@ cdef class Node:
         public Node parent, child0, child1
         public np.ndarray solution
         public double objectiveValue
+        public np.ndarray hSolution
+        public double hObjectiveValue
         public int branchVariable, branchValue
         public int depth
         public double lowerb, upperb
