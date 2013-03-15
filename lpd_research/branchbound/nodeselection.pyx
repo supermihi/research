@@ -8,7 +8,9 @@ from __future__ import absolute_import
 
 from collections import deque
 import heapq
+from libc.math cimport fmin
 from branchbound.bnb cimport Node
+from branchbound import branchrules
 from branchbound.myList cimport myDeque
 from branchbound.myList import MyIndexError
 from .bnb import NodesExhausted
@@ -18,8 +20,9 @@ import numpy as np
 
 cdef class BranchMethod:
     
-    def __init__(self, rootNode, problem):
+    def __init__(self, rootNode, problem, branchRule):
         self.root = rootNode
+        self.branchRule = branchRule
         self.problem = problem
         self.FirstSolutionExists = False
         self.lpTime = 0
@@ -27,6 +30,7 @@ cdef class BranchMethod:
         self.moveCount = 0
         self.fixCount = 0
         self.unfixCount = 0
+        
             
     cdef void refreshActiveNodes(self, Node activeOld):
         pass
@@ -69,12 +73,45 @@ cdef class BranchMethod:
         for var, value in fix:
             self.problem.fixVariable(var, value)
             self.fixCount += 1
-            
+
+    cdef void updBound(self, Node node):
+        """Updates lower and upper bounds for node and all parent nodes, if possible.
+        """
+        cdef:
+            double ub, lb, ubp, lbp, ubb, lbb, upper, lower
+        if node.parent is None:
+            pass
+        else:
+            ub = node.upperb
+            lb = node.lowerb
+            #upper bound parent => ubp; lower bound parent => lbp
+            ubp = node.parent.upperb
+            lbp = node.parent.lowerb
+            if node.branchValue == 1:
+                #upper bound brother => ubb; lower bound brother => lbb
+                ubb = node.parent.child0.upperb
+                lbb = node.parent.child0.lowerb
+            elif node.branchValue == 0:
+                ubb = node.parent.child1.upperb
+                lbb = node.parent.child1.lowerb
+            upper = fmin(ubb, ub)
+            lower = fmin(lbb, lb)
+            #update of upper and lower bound
+            if upper < ubp and lower > lbp:
+                node.parent.lowerb = lower
+                node.parent.upperb = upper
+                self.updBound(node.parent)
+            elif upper < ubp:
+                node.parent.upperb = upper
+                self.updBound(node.parent)
+            elif lower > lbp:
+                node.parent.lowerb = lower
+                self.updBound(node.parent)
 
 cdef class BFSMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -92,8 +129,24 @@ cdef class BFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
+#        print("root upper: {}, root lower: {}".format(self.root.upperb, self.root.lowerb))
+#        print("root objectiveValue: {}".format(self.root.objectiveValue))
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -107,8 +160,8 @@ cdef class BFSMethod(BranchMethod):
 
 cdef class MyBFSMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -128,8 +181,22 @@ cdef class MyBFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
            
@@ -144,8 +211,8 @@ cdef class MyBFSMethod(BranchMethod):
         
 cdef class BFSRandom(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -163,8 +230,22 @@ cdef class BFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
           
@@ -186,8 +267,8 @@ cdef class BFSRandom(BranchMethod):
              
 cdef class MyBFSRandom(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -207,8 +288,22 @@ cdef class MyBFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
          
@@ -231,8 +326,8 @@ cdef class MyBFSRandom(BranchMethod):
 
 cdef class BFSRound(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -250,8 +345,22 @@ cdef class BFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode       
     
@@ -280,8 +389,8 @@ cdef class BFSRound(BranchMethod):
              
 cdef class MyBFSRound(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -301,8 +410,22 @@ cdef class MyBFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -332,8 +455,8 @@ cdef class MyBFSRound(BranchMethod):
 
 cdef class DFSMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -351,8 +474,22 @@ cdef class DFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -366,8 +503,8 @@ cdef class DFSMethod(BranchMethod):
                 
 cdef class MyDFSMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -387,8 +524,22 @@ cdef class MyDFSMethod(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -403,8 +554,8 @@ cdef class MyDFSMethod(BranchMethod):
 
 cdef class DFSRandom(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -422,8 +573,22 @@ cdef class DFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -444,8 +609,8 @@ cdef class DFSRandom(BranchMethod):
                 
 cdef class MyDFSRandom(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -465,8 +630,22 @@ cdef class MyDFSRandom(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -488,8 +667,8 @@ cdef class MyDFSRandom(BranchMethod):
 
 cdef class DFSRound(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -507,8 +686,22 @@ cdef class DFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -537,8 +730,8 @@ cdef class DFSRound(BranchMethod):
             
 cdef class MyDFSRound(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -558,8 +751,22 @@ cdef class MyDFSRound(BranchMethod):
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
-        activeNode.hSolution = self.problem.hSolution
-        activeNode.hObjectiveValue = self.problem.hObjectiveValue
+        activeNode.lowerb = activeNode.objectiveValue
+        if activeNode.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+            if activeNode.varToBranch == -1:
+                activeNode.upperb = activeNode.objectiveValue
+                if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = activeNode.upperb
+                    self.root.solution = activeNode.solution
+            else:
+                if self.problem.hSolution is not None:
+                    activeNode.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(activeNode)
         #self.move(activeNode, activeOld)
         return activeNode
         
@@ -589,16 +796,30 @@ cdef class MyDFSRound(BranchMethod):
         
 cdef class BBSMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
         self.root.solution = self.problem.solution
-        self.root.objectiveValue = self.root.lowerb = self.problem.objectiveValue
-        self.root.hSolution = self.problem.hSolution
-        self.root.hObjectiveValue = self.root.upperb = self.problem.hObjectiveValue
+        self.root.objectiveValue = self.problem.objectiveValue
+        self.root.lowerb = self.root.objectiveValue
+        if self.root.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            self.root.varToBranch = self.branchRule.selectVariable(self.root.solution)
+            if self.root.varToBranch == -1:
+                self.root.upperb = self.root.objectiveValue
+                if self.root.objectiveValue > self.root.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = self.root.upperb
+            else:
+                if self.problem.hSolution is not None:
+                    self.root.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > self.root.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = self.root.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(self.root)
         self.activeNodes = [ (rootNode.lowerb, rootNode) ]
+        
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
@@ -624,8 +845,22 @@ cdef class BBSMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
-        parent.child0.hSolution = self.problem.hSolution
-        parent.child0.hObjectiveValue = self.problem.hObjectiveValue
+        parent.child0.lowerb = parent.child0.objectiveValue
+        if parent.child0.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            parent.child0.varToBranch = self.branchRule.selectVariable(parent.child0.solution)
+            if parent.child0.varToBranch == -1:
+                parent.child0.upperb = parent.child0.objectiveValue
+                if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = parent.child0.upperb
+                    self.root.solution = parent.child0.solution
+            else:
+                if self.problem.hSolution is not None:
+                    parent.child0.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child0.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(parent.child0)
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
@@ -634,8 +869,22 @@ cdef class BBSMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
-        parent.child1.hSolution = self.problem.hSolution
-        parent.child1.hObjectiveValue = self.problem.hObjectiveValue
+        parent.child1.lowerb = parent.child1.objectiveValue
+        if parent.child1.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            parent.child1.varToBranch = self.branchRule.selectVariable(parent.child1.solution)
+            if parent.child1.varToBranch == -1:
+                parent.child1.upperb = parent.child1.objectiveValue
+                if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = parent.child1.upperb
+                    self.root.solution = parent.child1.solution
+            else:
+                if self.problem.hSolution is not None:
+                    parent.child1.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child1.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(parent.child1)
         self.problem.unfixVariable(branchVariable)
         self.unfixCount += 2
         self.fixCount += 2              
@@ -644,16 +893,29 @@ cdef class BBSMethod(BranchMethod):
 #DeepSeaTroll Search Method        
 cdef class DSTMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.problem.objectiveValue
-        self.root.hSolution = self.problem.hSolution
-        self.root.hObjectiveValue = self.problem.hObjectiveValue
+        self.root.lowerb = self.root.objectiveValue
+        if self.root.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            self.root.varToBranch = self.branchRule.selectVariable(self.root.solution)
+            if self.root.varToBranch == -1:
+                self.root.upperb = self.root.objectiveValue
+                if self.root.objectiveValue > self.root.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = self.root.upperb
+            else:
+                if self.problem.hSolution is not None:
+                    self.root.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > self.root.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = self.root.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(self.root)
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
@@ -683,8 +945,22 @@ cdef class DSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
-        parent.child0.hSolution = self.problem.hSolution
-        parent.child0.hObjectiveValue = self.problem.hObjectiveValue
+        parent.child0.lowerb = parent.child0.objectiveValue
+        if parent.child0.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            parent.child0.varToBranch = self.branchRule.selectVariable(parent.child0.solution)
+            if parent.child0.varToBranch == -1:
+                parent.child0.upperb = parent.child0.objectiveValue
+                if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = parent.child0.upperb
+                    self.root.solution = parent.child0.solution
+            else:
+                if self.problem.hSolution is not None:
+                    parent.child0.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child0.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(parent.child0)
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
@@ -693,8 +969,22 @@ cdef class DSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
-        parent.child1.hSolution = self.problem.hSolution
-        parent.child1.hObjectiveValue = self.problem.hObjectiveValue
+        parent.child1.lowerb = parent.child1.objectiveValue
+        if parent.child1.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            parent.child1.varToBranch = self.branchRule.selectVariable(parent.child1.solution)
+            if parent.child1.varToBranch == -1:
+                parent.child1.upperb = parent.child1.objectiveValue
+                if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = parent.child1.upperb
+                    self.root.solution = parent.child1.solution
+            else:
+                if self.problem.hSolution is not None:
+                    parent.child1.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child1.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(parent.child1)
         self.problem.unfixVariable(branchVariable) 
         self.unfixCount += 2
         self.fixCount += 2
@@ -702,16 +992,29 @@ cdef class DSTMethod(BranchMethod):
 #DeepSeaTroll Search Method        
 cdef class MyDSTMethod(BranchMethod):
     
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
         self.root.solution = self.problem.solution
         self.root.objectiveValue = self.problem.objectiveValue
-        self.root.hSolution = self.problem.hSolution
-        self.root.hObjectiveValue = self.problem.hObjectiveValue
+        self.root.lowerb = self.root.objectiveValue
+        if self.root.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            self.root.varToBranch = self.branchRule.selectVariable(self.root.solution)
+            if self.root.varToBranch == -1:
+                self.root.upperb = self.root.objectiveValue
+                if self.root.objectiveValue > self.root.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = self.root.upperb
+            else:
+                if self.problem.hSolution is not None:
+                    self.root.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > self.root.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = self.root.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(self.root)
         
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
@@ -743,8 +1046,22 @@ cdef class MyDSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child0.solution = self.problem.solution
         parent.child0.objectiveValue = self.problem.objectiveValue
-        parent.child0.hSolution = self.problem.hSolution
-        parent.child0.hObjectiveValue = self.problem.hObjectiveValue
+        parent.child0.lowerb = parent.child0.objectiveValue
+        if parent.child0.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            parent.child0.varToBranch = self.branchRule.selectVariable(parent.child0.solution)
+            if parent.child0.varToBranch == -1:
+                parent.child0.upperb = parent.child0.objectiveValue
+                if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = parent.child0.upperb
+                    self.root.solution = parent.child0.solution
+            else:
+                if self.problem.hSolution is not None:
+                    parent.child0.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child0.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(parent.child0)
         self.problem.unfixVariable(branchVariable)
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
@@ -753,8 +1070,22 @@ cdef class MyDSTMethod(BranchMethod):
         self.lpTime += timer.duration
         parent.child1.solution = self.problem.solution
         parent.child1.objectiveValue = self.problem.objectiveValue
-        parent.child1.hSolution = self.problem.hSolution
-        parent.child1.hObjectiveValue = self.problem.hObjectiveValue
+        parent.child1.lowerb = parent.child1.objectiveValue
+        if parent.child1.solution is not None:
+            #print("{}".format(self.branchRule.selectVariable()))
+            parent.child1.varToBranch = self.branchRule.selectVariable(parent.child1.solution)
+            if parent.child1.varToBranch == -1:
+                parent.child1.upperb = parent.child1.objectiveValue
+                if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                    self.root.objectiveValue = parent.child1.upperb
+                    self.root.solution = parent.child1.solution
+            else:
+                if self.problem.hSolution is not None:
+                    parent.child1.upperb = self.problem.hObjectiveValue 
+                    if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child1.upperb
+                        self.root.solution = self.problem.hSolution
+        self.updBound(parent.child1)
         self.problem.unfixVariable(branchVariable) 
         self.unfixCount += 2
         self.fixCount += 2
@@ -762,8 +1093,8 @@ cdef class MyDSTMethod(BranchMethod):
 
 cdef class DFSandBBSMethod(BranchMethod):
 
-    def __init__(self, rootNode, problem):
-        BranchMethod.__init__(self, rootNode, problem)
+    def __init__(self, rootNode, problem, branchRule):
+        BranchMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -782,8 +1113,22 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             activeNode.solution = self.problem.solution
             activeNode.objectiveValue = self.problem.objectiveValue
-            activeNode.hSolution = self.problem.hSolution
-            activeNode.hObjectiveValue = self.problem.hObjectiveValue
+            activeNode.lowerb = activeNode.objectiveValue
+            if activeNode.solution is not None:
+                #print("{}".format(self.branchRule.selectVariable()))
+                activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
+                if activeNode.varToBranch == -1:
+                    activeNode.upperb = activeNode.objectiveValue
+                    if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = activeNode.upperb
+                        self.root.solution = activeNode.solution
+                else:
+                    if self.problem.hSolution is not None:
+                        activeNode.upperb = self.problem.hObjectiveValue 
+                        if self.root.objectiveValue > activeNode.upperb or not self.FirstSolutionExists:
+                            self.root.objectiveValue = activeNode.upperb
+                            self.root.solution = self.problem.hSolution
+            self.updBound(activeNode)
             #self.move(activeNode, activeOld)
             return activeNode
         else:
@@ -816,8 +1161,22 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             parent.child0.solution = self.problem.solution
             parent.child0.objectiveValue = self.problem.objectiveValue
-            parent.child0.hSolution = self.problem.hSolution
-            parent.child0.hObjectiveValue = self.problem.hObjectiveValue
+            parent.child0.lowerb = parent.child0.objectiveValue
+            if parent.child0.solution is not None:
+                #print("{}".format(self.branchRule.selectVariable()))
+                parent.child0.varToBranch = self.branchRule.selectVariable(parent.child0.solution)
+                if parent.child0.varToBranch == -1:
+                    parent.child0.upperb = parent.child0.objectiveValue
+                    if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child0.upperb
+                        self.root.solution = parent.child0.solution
+                else:
+                    if self.problem.hSolution is not None:
+                        parent.child0.upperb = self.problem.hObjectiveValue 
+                        if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
+                            self.root.objectiveValue = parent.child0.upperb
+                            self.root.solution = self.problem.hSolution
+            self.updBound(parent.child0)
             self.problem.unfixVariable(branchVariable)
             parent.child1 = Node(parent, branchVariable, 1)
             self.problem.fixVariable(branchVariable, 1)
@@ -826,8 +1185,22 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             parent.child1.solution = self.problem.solution
             parent.child1.objectiveValue = self.problem.objectiveValue
-            parent.child1.hSolution = self.problem.hSolution
-            parent.child1.hObjectiveValue = self.problem.hObjectiveValue
+            parent.child1.lowerb = parent.child1.objectiveValue
+            if parent.child1.solution is not None:
+                #print("{}".format(self.branchRule.selectVariable()))
+                parent.child1.varToBranch = self.branchRule.selectVariable(parent.child1.solution)
+                if parent.child1.varToBranch == -1:
+                    parent.child1.upperb = parent.child1.objectiveValue
+                    if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = parent.child1.upperb
+                        self.root.solution = parent.child1.solution
+                else:
+                    if self.problem.hSolution is not None:
+                        parent.child1.upperb = self.problem.hObjectiveValue 
+                        if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
+                            self.root.objectiveValue = parent.child1.upperb
+                            self.root.solution = self.problem.hSolution
+            self.updBound(parent.child1)
             self.problem.unfixVariable(branchVariable)
             
     cdef void refreshActiveNodes(self, Node activeOld):
@@ -858,12 +1231,27 @@ cdef class DFSandBBSMethod(BranchMethod):
             self.lpTime += timer.duration
             i.solution = self.problem.solution
             i.objectiveValue = self.problem.objectiveValue
-            i.hSolution = self.problem.hSolution
-            i.hObjectiveValue = self.problem.hObjectiveValue
+            i.lowerb = i.objectiveValue
+            if i.solution is not None:
+                #print("{}".format(self.branchRule.selectVariable()))
+                i.varToBranch = self.branchRule.selectVariable(i.solution)
+                if i.varToBranch == -1:
+                    i.upperb = i.objectiveValue
+                    if self.root.objectiveValue > i.upperb or not self.FirstSolutionExists:
+                        self.root.objectiveValue = i.upperb
+                        self.root.solution = i.solution
+                else:
+                    if self.problem.hSolution is not None:
+                        i.upperb = self.problem.hObjectiveValue 
+                        if self.root.objectiveValue > i.upperb or not self.FirstSolutionExists:
+                            self.root.objectiveValue = i.upperb
+                            self.root.solution = self.problem.hSolution
+            self.updBound(i)
             heapq.heappush(newNodes, (i.lowerb, i))
             activeOld = i
         with stopwatch() as moveTimer:
             self.move(activeOld, oldNode)            
         self.moveTime += moveTimer.duration
+        self.activeNodes = newNodes
         #self.moveCount += 1
     

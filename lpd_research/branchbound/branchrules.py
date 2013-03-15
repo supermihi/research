@@ -23,7 +23,7 @@ class FirstFractional(BranchingRule):
         for (i, x) in enumerate(solution):
             if x > 1e-10 and x < 1 - 1e-10:
                 return i
-        return None
+        return -1
     
 
     
@@ -37,7 +37,7 @@ class MostFractional(BranchingRule):
     def selectVariable(self, solution):
         index = np.argmin(np.abs(solution-0.5))
         if solution[index] < 1e-10 or solution[index] > 1-1e-10:
-            return None
+            return -1
         return index
     
 class MostFractionalSystematic(MostFractional):
@@ -45,7 +45,7 @@ class MostFractionalSystematic(MostFractional):
     def selectVariable(self, solution):
         index = np.argmin(np.abs(solution[:self.infolength]-0.5))
         if solution[index] < 1e-10 or solution[index] > 1-1e-10:
-            return None
+            return -1
         return index
 
 
@@ -61,7 +61,7 @@ class LeastReliable(BranchingRule):
             x = solution[index]
             if x > 1e-10 and x < 1 - 1e-10:
                 return index
-        return None
+        return -1
 
 class LeastReliableSystematic(LeastReliable):
     
@@ -70,4 +70,4 @@ class LeastReliableSystematic(LeastReliable):
             x = solution[index]
             if x > 1e-10 and x < 1 - 1e-10:
                 return index
-        return None
+        return -1
