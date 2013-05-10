@@ -3,7 +3,7 @@
 # cython: nonecheck=False
 # cython: cdivision=True
 # cython: wraparound=False
-# Copyright 2012 Michael Helmling
+# Copyright 2013 Michael Helmling
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
@@ -21,6 +21,7 @@ from libc.math cimport sqrt, abs
 from lpdecoding.core import Decoder
 from lpdecoding.algorithms.path cimport shortestPathScalarization 
 from lpdecoding.codes.trellis cimport _INFO, _PARITY
+from lpdecoding.codes.turbolike cimport TurboLikeCode
 from lpdecoding.utils cimport StopWatch
 
 DEF EPS = 1e-10
@@ -71,7 +72,6 @@ cdef void solveUT(np.double_t[:,:] a,
             tmp -= x[j]*a[S[i],S[j]]
         x[i] = tmp / a[S[i],S[i]]
 
-labelStr = { _INFO: "info", _PARITY: "parity"}
 
 cdef class CSPDecoder(Decoder):
     """Constrained Shortest Path Decoder."""
@@ -94,8 +94,7 @@ cdef class CSPDecoder(Decoder):
         """
 
         Decoder.__init__(self, code)
-        self.constraints = code.equalityPairs()
-        self.k = len(self.constraints)
+        self.k = code.prepareConstraintsData()
         self.blocklength = code.blocklength
         self.maxMajorCycles = maxMajorCycles
         self.measureTimes = measureTimes
@@ -112,18 +111,6 @@ cdef class CSPDecoder(Decoder):
             if maxMajorCycles != 0:
                 name += "(maxCycles={})".format(maxMajorCycles)
         self.name = name
-        #=======================================================================
-        # Set coefficients and indices for constraints g_i on the involved
-        # trellis graphs.
-        #=======================================================================
-        for i, ((trellis1, segment1, label1), (trellis2, segment2, label2)) \
-                in enumerate(self.constraints):
-            setattr(trellis1[segment1], "g_{0}_index".format(labelStr[label1]), i)
-            setattr(trellis1[segment1], "g_{0}".format(labelStr[label1]), 1)
-            
-            setattr(trellis2[segment2], "g_{0}_index".format(labelStr[label2]), i)
-            setattr(trellis2[segment2], "g_{0}".format(labelStr[label2]), -1)   
-
         #=======================================================================
         # Initialize arrays and matrices
         #=======================================================================
@@ -145,7 +132,7 @@ cdef class CSPDecoder(Decoder):
         self.direction = np.empty(self.k+1)
         self.timer = StopWatch()
         
-    cpdef solve(self, np.int_t[:] hint=None):
+    cpdef solve(self, np.int_t[:] hint=None, double lb=1):
         """Solve the LP problem by a number of nearest point problems in constraints space.
         """
         
@@ -155,11 +142,11 @@ cdef class CSPDecoder(Decoder):
             np.double_t[:] direction = self.direction, X = self.X
             np.double_t[:,:] codewords = self.codewords
             np.int_t[:,:,:] paths = self.paths           
-        self.majorCycles = self.minorCycles = 0
+        self.majorCycles = self.minorCycles = self.totalSPP = 0
         if self.measureTimes:
             self.lstsq_time = self.sp_time = self.cho_time = self.r_time = self.setcost_time = 0
             self.timer.start()
-        self.code.setCost(0.1*self.llrVector) # scale cost by 1/10 for increased numericial stability
+        (<TurboLikeCode>self.code).setCost(0.1*self.llrVector) # scale cost by 1/10 for increased numericial stability
         if self.measureTimes:
             self.setcost_time += self.timer.stop()
         
@@ -291,6 +278,10 @@ cdef class CSPDecoder(Decoder):
             self.stats["majorCycles"] += self.majorCycles
         except KeyError:
             self.stats["majorCycles"] = self.majorCycles
+        try:
+            self.stats["totalSPP"] += self.totalSPP
+        except KeyError:
+            self.stats["totalSPP"] = self.totalSPP
     
     cdef int NearestPointAlgorithm(self):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
@@ -609,6 +600,7 @@ cdef class CSPDecoder(Decoder):
             if c_result == inf:
                 return -2
         result[self.k] = c_result
+        self.totalSPP += 1
         return 0
     
     cdef void resetData(self, np.double_t[:] initPoint):
@@ -685,19 +677,3 @@ cdef class CSPDecoder(Decoder):
                             ("maxMajorCycles", self.maxMajorCycles),
                             ("measureTimes", self.measureTimes),
                             ("heuristic", self.heuristic)])
-
-
-class NDFInteriorDecoder(Decoder):
-    def __init__(self, code):
-        Decoder.__init__(self)
-        self.code = code
-        self.constraints = code.equalityPairs()
-        self.k = len(self.constraints)
-        for i, ((t1, s1, l1), (t2, s2, l2)) in enumerate(self.constraints):
-            if not hasattr(t1[s1], "g_coeffs"):
-                t1[s1].g_coeffs = { _INFO: [], _PARITY: [] }
-            t1[s1].g_coeffs[l1].append( (i, 1) )
-                
-            if not hasattr(t2[s2], "g_coeffs"):
-                t2[s2].g_coeffs = { _INFO: [], _PARITY: [] }
-            t2[s2].g_coeffs[l2].append( (i, -1) )

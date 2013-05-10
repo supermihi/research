@@ -4,9 +4,8 @@ from lpdecoding.utils cimport StopWatch
 from lpdecoding.codes.trellis cimport Trellis
 
 cdef class CSPDecoder(Decoder):
-    cdef public object constraints
     cdef public double lstsq_time, sp_time, cho_time, r_time, setcost_time
-    cdef public int majorCycles, minorCycles, maxMajorCycles, blocklength
+    cdef public int majorCycles, minorCycles, maxMajorCycles, totalSPP, blocklength
     #  temporary variables
     cdef np.ndarray \
         direction, \
