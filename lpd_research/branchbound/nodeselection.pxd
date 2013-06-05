@@ -9,6 +9,7 @@ cdef class BranchMethod:
 	cdef:
 		public Node root
 		public Problem problem
+		public object branchRule
 		public bint FirstSolutionExists
 		public double lpTime
 		public int moveCount
@@ -21,6 +22,7 @@ cdef class BranchMethod:
 	cdef void createNodes(self, int branchVariable, Node parent)
 	cdef void move(self, Node fromNode, Node toNode)
 	cdef Node getActiveNode(self, Node activeOld)
+	cdef void updBound(self, Node node)
 	
 	
 cdef class BFSMethod(BranchMethod):

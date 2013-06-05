@@ -33,18 +33,17 @@ if __name__ == "__main__":
     checkDecoder = CplexTurboLikeDecoder(code, ip=True)
     
 
-    nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
-                            nodeselection.BFSRandom, nodeselection.BFSRound, \
-                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
-                            nodeselection.DFSRound, nodeselection.DSTMethod, \
-                            nodeselection.DFSandBBSMethod, nodeselection.MyDFSMethod
-    #nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.MyBFSMethod,  \
-    #nodeSelectionMethods = nodeselection.MyBFSRandom, nodeselection.MyBFSRound#, \
-    #nodeSelectionMethods = nodeselection.MyDFSMethod, nodeselection.MyDFSRandom#, \
-    #nodeSelectionMethods = nodeselection.MyDFSRound, nodeselection.MyDSTMethod#, \
-#                           #nodeselection.DFSandBBSMethod
-#    nodeSelectionMethods = [nodeselection.MyDFSMethod, nodeselection.DFSMethod]
-                           
+#    nodeSelectionMethods = nodeselection.BBSMethod, nodeselection.BFSMethod,  \
+#                            nodeselection.BFSRandom, nodeselection.BFSRound, \
+#                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
+#                            nodeselection.DFSRound, nodeselection.DSTMethod, \
+#                            nodeselection.DFSandBBSMethod, nodeselection.MyDFSMethod
+#    nodeSelectionMethods =  nodeselection.BFSMethod,  \
+#                            nodeselection.BFSRandom, nodeselection.BFSRound, \
+#                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
+#                            nodeselection.DFSRound,  \
+#                            nodeselection.DFSandBBSMethod, nodeselection.MyDFSMethod
+    nodeSelectionMethods = [nodeselection.DSTMethod]                     
     branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
                      branchrules.FirstFractional, \
                      branchrules.MostFractional, branchrules.MostFractionalSystematic
@@ -171,7 +170,7 @@ if __name__ == "__main__":
     timesXls.write(10*numberOfTrials + 17, len(nodeSelectionMethods)*len(branchingRules)+1, "createTime")
     timesXls.write(10*numberOfTrials + 18, len(nodeSelectionMethods)*len(branchingRules)+1, "moveTime")
     timesXls.write(10*numberOfTrials + 19, len(nodeSelectionMethods)*len(branchingRules)+1, "selectionTime")
-    #cplexTime /= numberOfTrials
+    cplexTime /= numberOfTrials
     #timesXls.write(2*numberOfTrials + 3, len(nodeSelectionMethods)*len(branchingRules)+1, "{}".format(cplexTime))
     import pprint
     print("move counts:")

@@ -18,8 +18,8 @@ cdef class BranchAndBound:
         self.eps = eps
         self.root = Node()
         #the method used to branch at Nodes
-        self.selectionMethod = selectionMethod(self.root, self.problem)
         self.branchRule = branchRule(self.problem)
+        self.selectionMethod = selectionMethod(self.root, self.problem, self.branchRule)
         #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
@@ -54,64 +54,57 @@ cdef class BranchAndBound:
                 #print("i shouldnt be here")
                 break
             
-            #use heuristic objective Value as upper bound
-            if activeNew.hSolution is not None:
-                activeNew.upperb = activeNew.hObjectiveValue
-#                with stopwatch() as boundTimer:
-#                    self.updBound(activeNew)
-#                self.boundTime += boundTimer.duration
 
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
-                with stopwatch() as selectionTimer:
-                    branchVariable = self.branchRule.selectVariable(activeNew.solution)
-                self.selectionTime += selectionTimer.duration
+#                with stopwatch() as selectionTimer:
+#                    branchVariable = self.branchRule.selectVariable(activeNew.solution)
+#                self.selectionTime += selectionTimer.duration
                 #print("branchVariable: {}".format(branchVariable))
-                logging.debug('branchVariable: {}'.format(branchVariable))
+                logging.debug('branchVariable: {}'.format(activeNew.varToBranch))
                 #update bounds of all nodes if neccesary
-                activeNew.lowerb = activeNew.objectiveValue
+                
+                if self.optimalObjectiveValue > self.root.objectiveValue:
+                    #there doesnt exist any solution yet
+                    if self.optimalSolution is None:
+                        self.selectionMethod.FirstSolutionExists = True
+                        self.selectionMethod.refreshActiveNodes(activeNew)
+                    #we have a new optimal value and solution
+                    self.optimalSolution = self.root.solution
+                    self.optimalObjectiveValue = self.root.objectiveValue
+                    
 
-                #hier eventuell heuristik für upperbound einfügen
-                if branchVariable is None:
-                    # have a feasible solution
-                    if self.optimalObjectiveValue > activeNew.objectiveValue:
-                        if self.optimalSolution is None:
-                            logging.info("first feasible solution after {} steps".format(branchCount))
-                            self.selectionMethod.firstSolutionExists = True
-                            with stopwatch() as refreshTimer:
-                                self.selectionMethod.refreshActiveNodes(activeNew)
-                            self.refreshTime += refreshTimer.duration
-                        # found new global optimum
-                        self.optimalSolution = activeNew.solution
-                        self.optimalObjectiveValue = activeNew.objectiveValue
-                    logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
-                    activeNew.upperb = activeNew.objectiveValue
-                # if i found a branchvariable we use the heuristic solution as possible new optimum
-                else:
-                    if self.optimalObjectiveValue > activeNew.hObjectiveValue:
-                        if self.optimalSolution is None:
-                            self.selectionMethod.firstSolutionExists = True
-                            with stopwatch() as refreshTimer:
-                                self.selectionMethod.refreshActiveNodes(activeNew)
-                            self.refreshTime += refreshTimer.duration
-                        self.optimalSolution = activeNew.hSolution
-                        self.optimalObjectiveValue = activeNew.hObjectiveValue
-                with stopwatch() as boundTimer:
-                    self.updBound(activeNew)
-                self.boundTime += boundTimer.duration
+#                if activeNew.varToBranch stimmt nicht is None:
+#                    # have a feasible solution
+#                    
+#                    if self.optimalObjectiveValue > self.root.objectiveValue:
+#                        if self.optimalSolution is None:
+#                            logging.info("first feasible solution after {} steps".format(branchCount))
+#                            self.selectionMethod.firstSolutionExists = True
+#                            with stopwatch() as refreshTimer:
+#                                self.selectionMethod.refreshActiveNodes(activeNew)
+#                            self.refreshTime += refreshTimer.duration
+#                        # found new global optimum
+#                        self.optimalSolution = activeNew.solution
+#                        self.optimalObjectiveValue = activeNew.objectiveValue
+#                    logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
+#                    activeNew.upperb = activeNew.objectiveValue
+#                with stopwatch() as boundTimer:
+#                    self.updBound(activeNew)
+#                self.boundTime += boundTimer.duration
                 
                 #create new children or close branch
                 if activeNew.lowerb > self.root.upperb:
                     pass
                 elif abs(activeNew.lowerb - activeNew.upperb) < self.eps:
                     pass
-                elif branchVariable is None:
+                elif activeNew.varToBranch == -1:
                     pass
                 else:
                     #create children with branchValue and add them to the activeNodes-list
                     with stopwatch() as createTimer:
-                        self.selectionMethod.createNodes(branchVariable, activeNew)
+                        self.selectionMethod.createNodes(activeNew.varToBranch, activeNew)
                     self.createTime += createTimer.duration
                     with stopwatch() as addTimer:
                         self.selectionMethod.addNodes(activeNew.child0, activeNew.child1)
@@ -120,7 +113,7 @@ cdef class BranchAndBound:
             else:
                 activeNew.lowerb = np.inf
                 with stopwatch() as boundTimer:
-                    self.updBound(activeNew)
+                    self.selectionMethod.updBound(activeNew)
                 self.boundTime += boundTimer.duration
             activeOld = activeNew
            
@@ -154,39 +147,7 @@ cdef class BranchAndBound:
             
     
 
-    cdef void updBound(self, Node node):
-        """Updates lower and upper bounds for node and all parent nodes, if possible.
-        """
-        cdef:
-            double ub, lb, ubp, lbp, ubb, lbb, upper, lower
-        if node.parent is None:
-            pass
-        else:
-            ub = node.upperb
-            lb = node.lowerb
-            #upper bound parent => ubp; lower bound parent => lbp
-            ubp = node.parent.upperb
-            lbp = node.parent.lowerb
-            if node.branchValue == 1:
-                #upper bound brother => ubb; lower bound brother => lbb
-                ubb = node.parent.child0.upperb
-                lbb = node.parent.child0.lowerb
-            elif node.branchValue == 0:
-                ubb = node.parent.child1.upperb
-                lbb = node.parent.child1.lowerb
-            upper = fmin(ubb, ub)
-            lower = fmin(lbb, lb)
-            #update of upper and lower bound
-            if upper < ubp and lower > lbp:
-                node.parent.lowerb = lower
-                node.parent.upperb = upper
-                self.updBound(node.parent)
-            elif upper < ubp:
-                node.parent.upperb = upper
-                self.updBound(node.parent)
-            elif lower > lbp:
-                node.parent.lowerb = lower
-                self.updBound(node.parent)
+
 
 class NodesExhausted(Exception):
     pass
@@ -201,9 +162,8 @@ cdef class Node:
         self.child1 = None
         #nec to use BestBound
         self.solution = None
-        self.hSolution = None
-        self.hObjectiveValue = np.inf
         self.objectiveValue = np.inf
+        self.varToBranch = -1
         
         self.branchVariable = branchVariable
         self.branchValue = branchValue

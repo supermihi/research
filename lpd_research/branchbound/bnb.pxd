@@ -29,7 +29,7 @@ cdef class BranchAndBound:
         public double moveVsAll
         public double selectionVsAll
     
-    cdef void updBound(self, Node node)
+    
 
 
 cdef class Node:
@@ -37,8 +37,6 @@ cdef class Node:
         public Node parent, child0, child1
         public np.ndarray solution
         public double objectiveValue
-        public np.ndarray hSolution
-        public double hObjectiveValue
-        public int branchVariable, branchValue
+        public int branchVariable, branchValue, varToBranch
         public int depth
         public double lowerb, upperb
