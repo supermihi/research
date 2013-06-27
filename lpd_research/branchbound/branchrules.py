@@ -15,7 +15,8 @@ class BranchingRule:
     
     def selectVariable(self):
         pass
-    
+
+
 class FirstFractional(BranchingRule):
     """Simple rule that picks the first non-integral variable to branch on."""
     
@@ -25,7 +26,6 @@ class FirstFractional(BranchingRule):
                 return i
         return -1
     
-
     
 class MostFractional(BranchingRule):
     """Rule that selects the variable maximizing |x - [x]|."""

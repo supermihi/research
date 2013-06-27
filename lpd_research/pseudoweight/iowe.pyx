@@ -92,6 +92,7 @@ def readIOWE(path):
             table.append( (w1,w2,q1,q2,logn) )
     return IOWE(table[:13077])    
 
+
 def computeOuterIOWE(IOWE inner):
     out = collections.OrderedDict()
     cdef np.int_t currentW1, currentW2, jLow, jHigh, i, j, k, numTotal

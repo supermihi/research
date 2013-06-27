@@ -6,6 +6,7 @@ from lpdecoding.codes.trellis cimport Trellis
 cdef class CSPDecoder(Decoder):
     cdef public double lstsq_time, sp_time, cho_time, r_time, setcost_time
     cdef public int majorCycles, minorCycles, maxMajorCycles, totalSPP, blocklength
+    cdef public double threshold
     #  temporary variables
     cdef np.ndarray \
         direction, \
@@ -26,7 +27,7 @@ cdef class CSPDecoder(Decoder):
     cdef int solveScalarization(self, np.double_t[:] direction,
                                  np.double_t[:] result, np.double_t[:] codeword,
                                  np.int_t[:,:] paths=?)
-    cdef void resetData(self, np.double_t[:] initPoint) 
+    cdef void resetData(self, np.double_t[:] initPoint, double ref) 
     cdef void updateData(self, double delta_r)
     cdef void calculateSolution(self)
     cdef int innerLoop(self)

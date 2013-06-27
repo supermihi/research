@@ -100,6 +100,7 @@ cdef class CSPDecoder(Decoder):
         self.measureTimes = measureTimes
         self.heuristic = heuristic
         self.keepLP = keepLP
+        self.threshold = 0
         if name is None:
             name = "CSPDecoder"
             if measureTimes:
@@ -165,9 +166,9 @@ cdef class CSPDecoder(Decoder):
             self.solution = None
             return
         self.lenS = 1
+        
         #  test if initial path is feasible
         if norm(X, self.k) < 1e-8:
-            self.lenS = 1
             self.S[0] = 0
             self.w[0] = 1
             self.calculateSolution()
@@ -179,12 +180,14 @@ cdef class CSPDecoder(Decoder):
             except KeyError:
                 self.stats["immediateSolutions"] = 1
         else:
-            self.current_ref = X[self.k]
-            self.resetData(X)
+            self.resetData(X, X[self.k] if lb == 1 or 0.1*lb < X[self.k] else 0.1*lb)
             while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
                 #===================================================================
                 # Main iterations: push up reference point until we hit the LP solution            
                 #===================================================================
+                if self.threshold != 0 and self.current_ref >= 0.1*self.threshold:
+                    self.threshold = 1
+                    return
                 mainIterations += 1
                 if self.measureTimes:
                     self.timer.start()
@@ -210,8 +213,9 @@ cdef class CSPDecoder(Decoder):
                     return
                 #  compute intersection of hyperplane with c-axis
                 b_r = self.current_ref*X[self.k] - dot(X, X, self.k+1)
-                norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
                 ref = b_r / (self.current_ref - X[self.k])
+                
+                norm_a_r = -b_r + self.current_ref*(self.current_ref -X[self.k])
                 if norm_a_r < EPS:
                     #print('norm_a_r={}'.format(norm_a_r))
                     #self.objectiveValue = ref
@@ -286,6 +290,8 @@ cdef class CSPDecoder(Decoder):
     cdef int NearestPointAlgorithm(self):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,
         Mathematical Programming 11 (1976), pp.128-149.
+        
+        Uses the following class attributes:
         P: matrix of corral points (column-wise)
         S: vector of used indexes for P, w and R
         Sfree: bool array storing which indexes are free in S
@@ -293,6 +299,9 @@ cdef class CSPDecoder(Decoder):
         R: R for method D
         lenS: number of indexes
         X: result array
+        
+        Returns 0 if everything went OK, -1 if numerical problems were detected, and -2 if
+        infeasibility was detected.
         """
         # ************ explanation of the optimizations *********
         # This algorithm is highly optimized using Cython, it basically
@@ -312,7 +321,7 @@ cdef class CSPDecoder(Decoder):
         # code, and the optimized version is written below that comment line.
         # type definitions
         cdef:
-            double normx, oldnormx, a, b, c
+            double normx, a, b, c, oldnormx = 1e20
             int i, j, k
             int newIndex = 1, I
             int lenS = self.lenS
@@ -327,8 +336,7 @@ cdef class CSPDecoder(Decoder):
                            X = self.X
             np.int_t[:] S = self.S, Sfree = self.Sfree
             np.int_t[:,:,:] paths = self.paths
-  
-        oldnormx = 1e20
+            
         while True:
             self.majorCycles += 1
             # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -603,7 +611,7 @@ cdef class CSPDecoder(Decoder):
         self.totalSPP += 1
         return 0
     
-    cdef void resetData(self, np.double_t[:] initPoint):
+    cdef void resetData(self, np.double_t[:] initPoint, double ref):
         """Initialize S, w, R, and P given the initial point."""
         cdef:
             int k
@@ -613,17 +621,17 @@ cdef class CSPDecoder(Decoder):
             np.double_t[:] w = self.w
             np.int_t[:] S = self.S, Sfree = self.Sfree
 
-        R[0,0] = sqrt(1+dot(initPoint, initPoint, self.k))
+        #R[0,0] = sqrt(1+dot(initPoint, initPoint, self.k) + (ref-initPoint[self.k])**2)
         for k in range(self.k):
             P[k,0] = initPoint[k]
-        P[self.k, 0] = 0
+        P[self.k, 0] = initPoint[self.k] - ref
         self.lenS = 1
         S[0] = 0
         Sfree[0] = 0
         for k in range(1, self.k+2):
             Sfree[k] = 1
         w[0] = 1
-        self.current_ref = initPoint[self.k]
+        self.current_ref = ref
         
     cdef void updateData(self, double delta_r):
         """ Update P and R via cholesky decomposition of Q^T Q."""
@@ -638,14 +646,14 @@ cdef class CSPDecoder(Decoder):
             np.int_t[:] S = self.S
         for k in range(self.lenS):
             P[self.k, S[k]] += delta_r
-        # compute RHS = ee^T + Q^TQ
+        # compute RHS = ee^T + P^TP
         for i in range(lenS):
             for j in range(i,lenS):
                 a = 0
                 for k in range(self.k+1):
                     a += P[k,S[i]]*P[k,S[j]]
                 RHS[i,j] = 1 + a
-        # compute cholesky decomposition of Q^tQ
+        # compute cholesky decomposition of P^TP
         for i in range(lenS):
             for j in range(i):
                 a = RHS[j,i]

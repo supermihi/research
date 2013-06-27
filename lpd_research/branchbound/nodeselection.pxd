@@ -5,7 +5,7 @@ from branchbound.problem cimport Problem
 import heapq
 from collections import deque
 
-cdef class BranchMethod:
+cdef class SelectionMethod:
 	cdef:
 		public Node root
 		public Problem problem
@@ -25,7 +25,7 @@ cdef class BranchMethod:
 	cdef void updBound(self, Node node)
 	
 	
-cdef class BFSMethod(BranchMethod):
+cdef class BFSMethod(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -34,7 +34,7 @@ cdef class BFSMethod(BranchMethod):
 	cdef Node getActiveNode(self, Node activeOld)
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
-cdef class MyBFSMethod(BranchMethod):
+cdef class MyBFSMethod(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -44,7 +44,7 @@ cdef class MyBFSMethod(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
-cdef class BFSRandom(BranchMethod):
+cdef class BFSRandom(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -53,7 +53,7 @@ cdef class BFSRandom(BranchMethod):
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef void createNodes(self, int branchVariable, Node parent)	
 	
-cdef class MyBFSRandom(BranchMethod):
+cdef class MyBFSRandom(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -63,7 +63,7 @@ cdef class MyBFSRandom(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
-cdef class BFSRound(BranchMethod):
+cdef class BFSRound(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -72,7 +72,7 @@ cdef class BFSRound(BranchMethod):
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef void createNodes(self, int branchVariable, Node parent)
 		
-cdef class MyBFSRound(BranchMethod):
+cdef class MyBFSRound(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -82,7 +82,7 @@ cdef class MyBFSRound(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
-cdef class DFSMethod(BranchMethod):
+cdef class DFSMethod(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -91,7 +91,7 @@ cdef class DFSMethod(BranchMethod):
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
-cdef class MyDFSMethod(BranchMethod):
+cdef class MyDFSMethod(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -101,7 +101,7 @@ cdef class MyDFSMethod(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	 
 
-cdef class DFSRandom(BranchMethod):
+cdef class DFSRandom(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -110,7 +110,7 @@ cdef class DFSRandom(BranchMethod):
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef void createNodes(self, int branchVariable, Node parent)
 		 
-cdef class MyDFSRandom(BranchMethod):
+cdef class MyDFSRandom(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -120,7 +120,7 @@ cdef class MyDFSRandom(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
-cdef class DFSRound(BranchMethod):
+cdef class DFSRound(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -129,7 +129,7 @@ cdef class DFSRound(BranchMethod):
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef void createNodes(self, int branchVariable, Node parent)
 		
-cdef class MyDFSRound(BranchMethod):
+cdef class MyDFSRound(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -139,7 +139,7 @@ cdef class MyDFSRound(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 	
-cdef class BBSMethod(BranchMethod):
+cdef class BBSMethod(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -149,7 +149,7 @@ cdef class BBSMethod(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
-cdef class DSTMethod(BranchMethod):
+cdef class DSTMethod(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists
@@ -158,7 +158,7 @@ cdef class DSTMethod(BranchMethod):
 	cdef void addNodes(self, Node node0, Node node1)
 	cdef void createNodes(self, int branchVariable, Node parent)
 		
-cdef class MyDSTMethod(BranchMethod):
+cdef class MyDSTMethod(SelectionMethod):
 	cdef:
 		public myDeque activeNodes
 		public bint firstSolutionExists
@@ -168,7 +168,7 @@ cdef class MyDSTMethod(BranchMethod):
 	cdef void createNodes(self, int branchVariable, Node parent)
 	
 
-cdef class DFSandBBSMethod(BranchMethod):
+cdef class DFSandBBSMethod(SelectionMethod):
 	cdef:
 		public object activeNodes
 		public bint firstSolutionExists

@@ -1,12 +1,12 @@
 cimport numpy as np
-from branchbound.nodeselection cimport BranchMethod
+from branchbound.nodeselection cimport SelectionMethod
 
 cdef class BranchAndBound:
     cdef:
         public object problem
         public Node root
         public double eps
-        public BranchMethod selectionMethod
+        public SelectionMethod selectionMethod
         public object branchRule
         public np.ndarray optimalSolution
         public double optimalObjectiveValue

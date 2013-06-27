@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012 Michael Helmling, Philipp Reichling
+# Copyright 2012, 2013 Michael Helmling, Philipp Reichling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -17,12 +17,14 @@ cdef class BranchAndBound:
         self.problem = problem
         self.eps = eps
         self.root = Node()
-        #the method used to branch at Nodes
+        # how branching is done (selection of next fractional variable)
         self.branchRule = branchRule(self.problem)
+        # the method to select the next active node
         self.selectionMethod = selectionMethod(self.root, self.problem, self.branchRule)
-        #self.activeNodes = deque([self.root])
         self.optimalSolution = None
         self.optimalObjectiveValue = np.inf
+        
+        # time measurement
         self.refreshTime = 0
         self.getTime = 0
         self.addTime = 0
@@ -30,7 +32,6 @@ cdef class BranchAndBound:
         self.moveTime = 0
         self.selectionTime = 0
         self.boundTime = 0
-        #self.getActiveNode = selectionMethod
     
     def run(self):
         """Builds tree and runs a branch and bound algorithm.
@@ -43,18 +44,15 @@ cdef class BranchAndBound:
         while True:
             logging.debug('main loop iteration {}'.format(branchCount))
             logging.debug('lb={}, ub={}'.format(self.root.lowerb, self.root.upperb))
-            #logging.debug('#active nodes: {}\n'.format(len(self.selectionMethod.activeNodes)))
+            
             #select one of the active nodes, move there and (solve the corresponding problem)
-            #try:
             with stopwatch() as getTimer:
                 activeNew = self.selectionMethod.getActiveNode(activeOld)
             self.getTime += getTimer.duration
-            #except NodesExhausted:
             if not isinstance(activeNew, Node):
-                #print("i shouldnt be here")
+                # nodes are exhausted
                 break
             
-
             if activeNew.solution is not None:
                 logging.debug('activeNew solution: {}'.format(activeNew.solution))
                 #find the Variable to be branched in this node
@@ -74,28 +72,8 @@ cdef class BranchAndBound:
                     self.optimalSolution = self.root.solution
                     self.optimalObjectiveValue = self.root.objectiveValue
                     
-
-#                if activeNew.varToBranch stimmt nicht is None:
-#                    # have a feasible solution
-#                    
-#                    if self.optimalObjectiveValue > self.root.objectiveValue:
-#                        if self.optimalSolution is None:
-#                            logging.info("first feasible solution after {} steps".format(branchCount))
-#                            self.selectionMethod.firstSolutionExists = True
-#                            with stopwatch() as refreshTimer:
-#                                self.selectionMethod.refreshActiveNodes(activeNew)
-#                            self.refreshTime += refreshTimer.duration
-#                        # found new global optimum
-#                        self.optimalSolution = activeNew.solution
-#                        self.optimalObjectiveValue = activeNew.objectiveValue
-#                    logging.debug('objectiveValue: {}'.format(activeNew.objectiveValue))
-#                    activeNew.upperb = activeNew.objectiveValue
-#                with stopwatch() as boundTimer:
-#                    self.updBound(activeNew)
-#                self.boundTime += boundTimer.duration
-                
                 #create new children or close branch
-                if activeNew.lowerb > self.root.upperb:
+                if activeNew.lowerb >= self.root.upperb:
                     pass
                 elif abs(activeNew.lowerb - activeNew.upperb) < self.eps:
                     pass

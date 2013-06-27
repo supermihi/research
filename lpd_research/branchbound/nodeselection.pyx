@@ -12,13 +12,11 @@ from libc.math cimport fmin
 from branchbound.bnb cimport Node
 from branchbound import branchrules
 from branchbound.myList cimport myDeque
-from branchbound.myList import MyIndexError
-from .bnb import NodesExhausted
 from lpdecoding.utils import stopwatch
-#from branchbound.queue import Queue
 import numpy as np
 
-cdef class BranchMethod:
+
+cdef class SelectionMethod:
     
     def __init__(self, rootNode, problem, branchRule):
         self.root = rootNode
@@ -80,38 +78,37 @@ cdef class BranchMethod:
         cdef:
             double ub, lb, ubp, lbp, ubb, lbb, upper, lower
         if node.parent is None:
-            pass
-        else:
-            ub = node.upperb
-            lb = node.lowerb
-            #upper bound parent => ubp; lower bound parent => lbp
-            ubp = node.parent.upperb
-            lbp = node.parent.lowerb
-            if node.branchValue == 1:
-                #upper bound brother => ubb; lower bound brother => lbb
-                ubb = node.parent.child0.upperb
-                lbb = node.parent.child0.lowerb
-            elif node.branchValue == 0:
-                ubb = node.parent.child1.upperb
-                lbb = node.parent.child1.lowerb
-            upper = fmin(ubb, ub)
-            lower = fmin(lbb, lb)
-            #update of upper and lower bound
-            if upper < ubp and lower > lbp:
-                node.parent.lowerb = lower
-                node.parent.upperb = upper
-                self.updBound(node.parent)
-            elif upper < ubp:
-                node.parent.upperb = upper
-                self.updBound(node.parent)
-            elif lower > lbp:
-                node.parent.lowerb = lower
-                self.updBound(node.parent)
+            return
+        ub = node.upperb
+        lb = node.lowerb
+        #upper bound parent => ubp; lower bound parent => lbp
+        ubp = node.parent.upperb
+        lbp = node.parent.lowerb
+        if node.branchValue == 1:
+            #upper bound brother => ubb; lower bound brother => lbb
+            ubb = node.parent.child0.upperb
+            lbb = node.parent.child0.lowerb
+        elif node.branchValue == 0:
+            ubb = node.parent.child1.upperb
+            lbb = node.parent.child1.lowerb
+        upper = fmin(ubb, ub)
+        lower = fmin(lbb, lb)
+        #update of upper and lower bound
+        if upper < ubp and lower > lbp:
+            node.parent.lowerb = lower
+            node.parent.upperb = upper
+            self.updBound(node.parent)
+        elif upper < ubp:
+            node.parent.upperb = upper
+            self.updBound(node.parent)
+        elif lower > lbp:
+            node.parent.lowerb = lower
+            self.updBound(node.parent)
 
-cdef class BFSMethod(BranchMethod):
+cdef class BFSMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -131,7 +128,6 @@ cdef class BFSMethod(BranchMethod):
         activeNode.objectiveValue = self.problem.objectiveValue
         activeNode.lowerb = activeNode.objectiveValue
         if activeNode.solution is not None:
-            #print("{}".format(self.branchRule.selectVariable()))
             activeNode.varToBranch = self.branchRule.selectVariable(activeNode.solution)
             if activeNode.varToBranch == -1:
                 activeNode.upperb = activeNode.objectiveValue
@@ -158,10 +154,10 @@ cdef class BFSMethod(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
 
-cdef class MyBFSMethod(BranchMethod):
+cdef class MyBFSMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -209,10 +205,10 @@ cdef class MyBFSMethod(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
         
-cdef class BFSRandom(BranchMethod):
+cdef class BFSRandom(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -265,10 +261,10 @@ cdef class BFSRandom(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
              
-cdef class MyBFSRandom(BranchMethod):
+cdef class MyBFSRandom(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -324,10 +320,10 @@ cdef class MyBFSRandom(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
 
-cdef class BFSRound(BranchMethod):
+cdef class BFSRound(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -387,10 +383,10 @@ cdef class BFSRound(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
              
-cdef class MyBFSRound(BranchMethod):
+cdef class MyBFSRound(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         
     cdef Node getActiveNode(self, Node activeOld):
@@ -453,10 +449,10 @@ cdef class MyBFSRound(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
          
 
-cdef class DFSMethod(BranchMethod):
+cdef class DFSMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -470,7 +466,10 @@ cdef class DFSMethod(BranchMethod):
             self.move(activeOld, activeNode)
         self.moveTime += moveTimer.duration
         with stopwatch() as timer:
-            self.problem.solve()
+            if activeNode.depth > 0 and activeNode.parent.lowerb > -np.inf:
+                self.problem.solve(activeNode.parent.lowerb)
+            else:
+                self.problem.solve()
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
@@ -501,15 +500,16 @@ cdef class DFSMethod(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
                 
-cdef class MyDFSMethod(BranchMethod):
+cdef class MyDFSMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
         cdef:
             Node activeNode
+            double lb=1
         #try:
         activeNode = self.activeNodes.pop()
         if activeNode == None:
@@ -520,7 +520,11 @@ cdef class MyDFSMethod(BranchMethod):
             self.move(activeOld, activeNode)
         self.moveTime += moveTimer.duration
         with stopwatch() as timer:
-            self.problem.solve()
+            if activeNode.parent is not None:
+                lb = activeNode.parent.lowerb
+            if self.problem.solve(lb, self.root.upperb) == -2:
+                activeNode.upperb = activeNode.lowerb = self.root.upperb
+                return activeNode
         self.lpTime += timer.duration
         activeNode.solution = self.problem.solution
         activeNode.objectiveValue = self.problem.objectiveValue
@@ -552,10 +556,10 @@ cdef class MyDFSMethod(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
 
-cdef class DFSRandom(BranchMethod):
+cdef class DFSRandom(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -607,10 +611,10 @@ cdef class DFSRandom(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
                 
-cdef class MyDFSRandom(BranchMethod):
+cdef class MyDFSRandom(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -665,10 +669,10 @@ cdef class MyDFSRandom(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
 
-cdef class DFSRound(BranchMethod):
+cdef class DFSRound(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -728,10 +732,10 @@ cdef class DFSRound(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         parent.child1 = Node(parent, branchVariable, 1)
             
-cdef class MyDFSRound(BranchMethod):
+cdef class MyDFSRound(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
 
     cdef Node getActiveNode(self, Node activeOld):
@@ -794,10 +798,10 @@ cdef class MyDFSRound(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         
         
-cdef class BBSMethod(BranchMethod):
+cdef class BBSMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
@@ -847,7 +851,6 @@ cdef class BBSMethod(BranchMethod):
         parent.child0.objectiveValue = self.problem.objectiveValue
         parent.child0.lowerb = parent.child0.objectiveValue
         if parent.child0.solution is not None:
-            #print("{}".format(self.branchRule.selectVariable()))
             parent.child0.varToBranch = self.branchRule.selectVariable(parent.child0.solution)
             if parent.child0.varToBranch == -1:
                 parent.child0.upperb = parent.child0.objectiveValue
@@ -891,10 +894,10 @@ cdef class BBSMethod(BranchMethod):
 
 
 #DeepSeaTroll Search Method        
-cdef class DSTMethod(BranchMethod):
+cdef class DSTMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
         with stopwatch() as timer:
             self.problem.solve()
@@ -941,11 +944,13 @@ cdef class DSTMethod(BranchMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         self.problem.fixVariable(branchVariable, 0)
         with stopwatch() as timer:
-            self.problem.solve()
+            if self.problem.solve(parent.lowerb, parent.upperb) == -2:
+                parent.child0.upperb = self.problem.objectiveValue
+                parent.child0.solution = parent.solution
+            else:
+                parent.child0.solution = self.problem.solution
         self.lpTime += timer.duration
-        parent.child0.solution = self.problem.solution
-        parent.child0.objectiveValue = self.problem.objectiveValue
-        parent.child0.lowerb = parent.child0.objectiveValue
+        parent.child0.objectiveValue = parent.child0.lowerb = self.problem.objectiveValue
         if parent.child0.solution is not None:
             #print("{}".format(self.branchRule.selectVariable()))
             parent.child0.varToBranch = self.branchRule.selectVariable(parent.child0.solution)
@@ -965,11 +970,13 @@ cdef class DSTMethod(BranchMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
         with stopwatch() as timer:
-            self.problem.solve()
+            if self.problem.solve(parent.lowerb, parent.upperb) == -2:
+                parent.child1.upperb = self.problem.objectiveValue
+                parent.child1.solution = parent.solution
+            else:
+                parent.child1.solution = self.problem.solution
         self.lpTime += timer.duration
-        parent.child1.solution = self.problem.solution
-        parent.child1.objectiveValue = self.problem.objectiveValue
-        parent.child1.lowerb = parent.child1.objectiveValue
+        parent.child1.lowerb = parent.child1.objectiveValue = self.problem.objectiveValue
         if parent.child1.solution is not None:
             #print("{}".format(self.branchRule.selectVariable()))
             parent.child1.varToBranch = self.branchRule.selectVariable(parent.child1.solution)
@@ -990,10 +997,10 @@ cdef class DSTMethod(BranchMethod):
         self.fixCount += 2
         
 #DeepSeaTroll Search Method        
-cdef class MyDSTMethod(BranchMethod):
+cdef class MyDSTMethod(SelectionMethod):
     
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = myDeque(rootNode)
         with stopwatch() as timer:
             self.problem.solve()
@@ -1091,10 +1098,10 @@ cdef class MyDSTMethod(BranchMethod):
         self.fixCount += 2
         
 
-cdef class DFSandBBSMethod(BranchMethod):
+cdef class DFSandBBSMethod(SelectionMethod):
 
     def __init__(self, rootNode, problem, branchRule):
-        BranchMethod.__init__(self, rootNode, problem, branchRule)
+        SelectionMethod.__init__(self, rootNode, problem, branchRule)
         self.activeNodes = deque([rootNode])
 
     cdef Node getActiveNode(self, Node activeOld):

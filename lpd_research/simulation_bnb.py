@@ -5,6 +5,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+
 from __future__ import print_function, division
 import itertools
 import logging
@@ -19,6 +20,7 @@ from lpdecoding.codes.turbolike import StandardTurboCode
 from lpdecoding.codes.convolutional import LTEEncoder
 from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
 from lpdecoding.utils import stopwatch
+from lpdecoding import *
 from xlwt import Workbook
  
 if __name__ == "__main__":
@@ -43,10 +45,8 @@ if __name__ == "__main__":
 #                            nodeselection.DFSMethod, nodeselection.DFSRandom, \
 #                            nodeselection.DFSRound,  \
 #                            nodeselection.DFSandBBSMethod, nodeselection.MyDFSMethod
-    nodeSelectionMethods = [nodeselection.DSTMethod]                     
-    branchingRules = branchrules.LeastReliable, branchrules.LeastReliableSystematic, \
-                     branchrules.FirstFractional, \
-                     branchrules.MostFractional, branchrules.MostFractionalSystematic
+    nodeSelectionMethods = nodeselection.DFSMethod, nodeselection.DSTMethod, nodeselection.MyDFSMethod                     
+    branchingRules = branchrules.FirstFractional,
     #initialize xls
     stats = Workbook()
     branchCountsXls = stats.add_sheet('BranchCounts')
@@ -74,11 +74,12 @@ if __name__ == "__main__":
             timesXls.write(1,i*len(branchingRules)+j, bRule.__name__)
     timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+1, 'Cplex')
     timesXls.write(0, len(nodeSelectionMethods)*len(branchingRules)+2, 'Seed')
-    #stats.save('stats.xls') 
                        
     seed = np.random.randint(9999999)
     #seed = 9864950
     #seed = 3977440
+    channel = AWGNC(coderate=code.rate, snr=1, seed=seed)
+    sig = SignalGenerator(code, channel, randomCodewords=True, wordSeed=seed)
     np.random.seed(seed)
     attrs = "branchCount", "fixCount", "unfixCount", "moveCount", "time", "lpTime", "lpVsAll", \
             "boundTime", "boundVsAll", "refreshTime", "refreshVsAll", "getTime", "getVsAll", \
@@ -90,7 +91,7 @@ if __name__ == "__main__":
             locals()[attr+"s"][(nsMethod.__name__, bRule.__name__)] = 0
     
     for i in range(numberOfTrials):
-        llr = np.random.standard_normal(code.blocklength)
+        llr = next(sig) #np.random.standard_normal(code.blocklength)
         timesXls.write(10*i+2,len(nodeSelectionMethods)*len(branchingRules)+2, "{}".format(seed) )
         with stopwatch() as timer:
             checkDecoder.decode(llr)
@@ -184,4 +185,4 @@ if __name__ == "__main__":
     print("cplexTime: {}".format(cplexTime))
     print("lpVsAlls:")
     pprint.pprint(lpVsAlls)
-    stats.save('stats.xls')
+    stats.save(sys.argv[3])
