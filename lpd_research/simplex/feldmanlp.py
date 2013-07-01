@@ -31,22 +31,21 @@ if __name__ == "__main__":
     from lpdecoding import *
     from lpdecoding.decoders.feldmanlpdecoders import *
     #code = HammingCode(3)
-    code = LinearCode("/home/helmling/Forschung/codez/Tanner_155_64.alist")
+    #code = LinearCode("/home/helmling/Forschung/codez/Tanner_155_64.alist")
+    code = LinearCode("/home/helmling/Forschung/codes/ira_40_20_m.alist")
     decoder_ref = CplexLPDecoder(code)
     decoder_new = CustomFeldmanLPDecoder(code)
     #print(matrix.strBinary(decoder_new.A))
-    #print(matrix.strBinary(decoder_new.b))
-    np.savetxt("florian_A_groß.txt", decoder_new.A, '%d')
-    np.savetxt("florian_b_groß.txt", decoder_new.b,  '%d') 
+    #print(matrix.strBinary(decoder_new.b)) 
     chan =  AWGNC(snr=0.0, coderate=code.rate, seed=2198437)
     signalg = SignalGenerator(code, chan, False)
     logging.basicConfig(level=logging.DEBUG)
     for i in range(10):
         next(signalg)
-    for i in range(1):
+    for i in range(10):
         print(i)
         llr = next(signalg)
-        np.savetxt("florian_llr_groß.txt", llr)
+        #llr = np.random.standard_normal(code.blocklength)
         decoder_ref.decode(llr)
         decoder_new.decode(llr)
         if not np.allclose(decoder_ref.solution, decoder_new.solution):

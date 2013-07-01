@@ -4,7 +4,7 @@ import numpy as np
 import logging
 
 logger = logging.getLogger("simplex")
-EPS = 1e-12
+EPS = 1e-16
 import itertools
 
 def primal01SimplexRevised(A, b, c):
@@ -34,11 +34,11 @@ def primal01SimplexRevised(A, b, c):
         pivotElem = Tred[row,col]
         logger.info("pivoting with [{},{}]={}".format(row, col, pivotElem))
         for ii in xrange(m+1):
-            if ii != row and np.abs(Tred[ii, col]) > EPS:
-                Tred[ii, :] -= (Tred[ii, col]/pivotElem)*Tred[row,:]
-                Tred[ii, col] = 0 # fix numerical errors
+            if ii != row:
+                if np.abs(Tred[ii, col]) > EPS:
+                    Tred[ii, :] -= (Tred[ii, col]/pivotElem)*Tred[row,:]
         Tred[row,:] /= pivotElem
-        Tred[row,col] = 1 # fix numerical errors
+        #Tred[row,col] = 1 # fix numerical errors
         # maybe swap these steps
     
     for iteration in itertools.count():
@@ -62,29 +62,38 @@ def primal01SimplexRevised(A, b, c):
                 logger.debug("B={}".format(B))
                 logger.debug("N={}".format(N))
                 logger.debug("LU={}".format(LU))
-                delta_1 = delta_2 = delta_3 = np.inf
-                min_row_d2 = min_row_d3 = 0
+                case = -1
+                delta = np.inf
+                min_row = 0
                 if found == 0:
                     # Situation 1 or 2
                     logger.debug("situation 1/2 with j={}, j_ind={} (cj_bar={})".format(j, j_ind, cj_bar))
                     for i in xrange(1,m+1):
                         if Tred[i,m+1] > EPS: # relevant for delta_2
-                            quotient = Tred[i,m]/Tred[i,m+1] 
-                            if quotient < delta_2:
-                                delta_2 = quotient
-                                min_row_d2 = i
-                        elif Tred[i,m+1] < -EPS and B[i-1] < n-m: # relevant for delta_3
-                            quotient = (Tred[i,m]-1)/Tred[i,m+1]
-                            if quotient < delta_3:
-                                delta_3 = quotient
-                                min_row_d3 = i
-                    if j < n-m: # upper bounded variable -> compute delta_1
-                        delta_1 = 1
-                    case = np.argmin((delta_1, delta_2, delta_3))
-                    logger.debug("deltas={},{},{}".format(delta_1, delta_2, delta_3))
-                    logger.debug("min_rows={},{}".format(min_row_d2, min_row_d3))
+                            quotient = Tred[i,m]/Tred[i,m+1]
+                            if quotient < delta or (quotient < delta+EPS and B[i-1] < B[min_row-1]):
+                                delta = quotient
+                                min_row = i
+                                case = 1
+                        elif B[i-1] < n-m:
+                            if Tred[i,m+1] < -EPS: # relevant for delta_3
+                                quotient = (Tred[i,m]-1)/Tred[i,m+1]
+                                if quotient < delta or (quotient < delta+EPS and B[i-1] < B[min_row-1]):
+                                    delta = quotient
+                                    min_row = i
+                                    case = 2
+                            else:
+                                Tred[i,m+1] = 0
+                    if j < n-m and delta >= 1:
+                        delta = 1
+                        case = 0
+                    assert delta < 1e10
+                    assert case > -1
+                    # case = np.argmin((delta_1, delta_2, delta_3))
+                    #logger.debug("deltas={},{},{}".format(delta_1, delta_2, delta_3))
+                    #logger.debug("min_rows={},{}".format(min_row_d2, min_row_d3))
                     if case == 0:
-                        assert delta_1 == 1
+                        #assert delta_1 == 1
                         logger.debug("case delta_1")
                         # case (3): L->U
                         Tred[:,m] -= Tred[:,m+1] # update \tilde b
@@ -92,39 +101,51 @@ def primal01SimplexRevised(A, b, c):
                     elif case == 1:
                         # normal basis exchange: case (1)
                         logger.debug("case delta_2")
-                        logger.debug("Tred[i,m+1]={}".format(Tred[min_row_d2,m+1]))
-                        logger.debug("Tred[i,m]={}".format(Tred[min_row_d2,m]))
-                        assert min_row_d2 > 0
-                        N[j_ind] = B[min_row_d2-1]
-                        B[min_row_d2-1] = j
-                        pivot(min_row_d2, m+1)
+                        #logger.debug("Tred[i,m+1]={}".format(Tred[min_row_d2,m+1]))
+                        #logger.debug("Tred[i,m]={}".format(Tred[min_row_d2,m]))
+                        #assert min_row_d2 > 0
+                        assert min_row > 0
+                        N[j_ind] = B[min_row-1]
+                        B[min_row-1] = j
+                        pivot(min_row, m+1)
                     else:
                         # case (5): L -> B, B-> U
                         logger.debug("case delta_3")
-                        assert min_row_d3 > 0
-                        N[j_ind] = B[min_row_d3-1]
-                        B[min_row_d3-1] = j
+                        assert min_row > 0
+                        N[j_ind] = B[min_row-1]
+                        B[min_row-1] = j
                         LU[j_ind] = 1
-                        Tred[min_row_d3, m] -= 1
-                        pivot(min_row_d3, m+1)
+                        Tred[min_row, m] -= 1
+                        if np.abs(Tred[min_row, m]) < EPS:
+                            Tred[min_row, m] = 0
+                        pivot(min_row, m+1)
                 else:
                     assert found == 1
                     logger.debug("situation 3 with j={}, j_ind={} (cj_bar={})".format(j, j_ind, cj_bar))
-                    delta_1 = 1
+                    #delta_1 = 1
                     for i in xrange(1, m+1):
                         if Tred[i,m+1] < -EPS:
                             quotient = -Tred[i,m]/Tred[i,m+1]
-                            if quotient < delta_2:
-                                delta_2 = quotient
-                                min_row_d2 = i
-                        elif Tred[i,m+1] > EPS and B[i-1] < n-m:
-                            quotient = (1 - Tred[i,m])/Tred[i,m+1]
-                            if quotient < delta_3:
-                                delta_3 = quotient
-                                min_row_d3 = i
-                    case = np.argmin((delta_1, delta_2, delta_3))
-                    logger.debug("deltas={},{},{}".format(delta_1, delta_2, delta_3))
-                    logger.debug("min_rows={},{}".format(min_row_d2, min_row_d3))
+                            if quotient < delta or (quotient < delta+EPS and B[i-1] < B[min_row-1]):
+                                delta = quotient
+                                min_row = i
+                                case = 1
+                        elif B[i-1] < n-m:
+                            if Tred[i,m+1] > EPS:
+                                quotient = (1 - Tred[i,m])/Tred[i,m+1]
+                                if quotient < delta or (quotient < delta+EPS and B[i-1] < B[min_row-1]):
+                                    delta = quotient
+                                    min_row = i
+                                    case = 2
+                            else:
+                                Tred[i,m+1] = 0
+                    if delta >= 1:
+                        delta = 1
+                        case = 0
+                    assert delta < 1e10
+                    #case = np.argmin((delta_1, delta_2, delta_3))
+                    #logger.debug("deltas={},{},{}".format(delta_1, delta_2, delta_3))
+                    #logger.debug("min_rows={},{}".format(min_row_d2, min_row_d3))
                     if case == 0:
                         logger.debug("case delta_1")
                         # case (4): U -> L
@@ -135,30 +156,25 @@ def primal01SimplexRevised(A, b, c):
                         logger.info("case delta_2")
                         logger.info(Tred[:,m+1])
                         logger.info(Tred[:,m])
-                        assert min_row_d2 > 0
-                        N[j_ind] = B[min_row_d2-1]
-                        B[min_row_d2-1] = j
+                        assert min_row > 0
+                        N[j_ind] = B[min_row-1]
+                        B[min_row-1] = j
                         LU[j_ind] = 0
                         #Tred[:,m] += Tred[:,m+1]
-                        pivot(min_row_d2, m+1)
-                        Tred[min_row_d2, m] += 1
+                        pivot(min_row, m+1)
+                        Tred[min_row, m] += 1
                     else:
                         logger.info("case delta_3")
-                        occuredCases[5] = iteration
-                        assert min_row_d3 > 0
+                        assert min_row > 0
                         #Tred[:,m] += Tred[:,m+1]
-                        Tred[min_row_d3,m] -= 1
-                        N[j_ind] = B[min_row_d3-1]
-                        B[min_row_d3-1] = j
-                        pivot(min_row_d3, m+1)
-                        Tred[min_row_d3,m] += 1
+                        Tred[min_row, m] -= 1
+                        if np.abs(Tred[min_row, m]) < EPS:
+                            Tred[min_row, m] = 0
+                        N[j_ind] = B[min_row-1]
+                        B[min_row-1] = j
+                        pivot(min_row, m+1)
+                        Tred[min_row, m] += 1
                 break
-            #try:
-            #    assert np.allclose(np.linalg.inv(A[:,B]), Tred[1:, :m])
-            #except np.linalg.LinAlgError:
-            #    print(np.linalg.matrix_rank(A[:,B]))
-            #    print(np.linalg.matrix_rank(Tred[1:, :m]))
-            #    raw_input()
         if found == -1:
             logger.debug('no reduced costs in iteration {}'.format(iteration))
             x = np.zeros(n-m, dtype=np.double)
@@ -168,12 +184,6 @@ def primal01SimplexRevised(A, b, c):
             for r_ind, r in enumerate(N):
                 if r < n-m and LU[r_ind] == 1:
                     x[r] = 1
-            #correctObj = np.dot(x, c[:n-m])
-            #if np.abs(-Tred[0,m] - correctObj) > 1e-8:
-            #    print('argh')
-            #    print(correctObj)
-            #    print(-Tred[0,m])
-            #    raw_input()
             return -Tred[0,m], x 
         
         
