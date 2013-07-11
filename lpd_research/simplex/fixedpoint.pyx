@@ -8,7 +8,7 @@ cdef:
     int _frac, _int, _total
     double _scale, _revscale
     fpt_t _mask, _fracMask, _sign, _carry, _negExtension
-
+    int errorMode = 0 # 0: set to max/min, 1: throw error
 _fmt = None
 
 def setPrecision(int total, int fractional):
@@ -27,6 +27,10 @@ def setPrecision(int total, int fractional):
 
 setPrecision(6, 2)
 
+def setErrorMode(int mode):
+    if mode < 0 or mode > 1:
+        raise ValueError("Only Errormode between 0 and 1 allowed")
+    errorMode = mode
 
 def float2fixed(value):
     if value < 0:
@@ -41,12 +45,11 @@ def float2fixed(value):
     return fixed
 
 def np_float2fixed(array):
-    out = np.empty(array.shape, fpt)
-    cdef np.broadcast it = np.broadcast(array, out)
-    while np.PyArray_MultiIter_NOTDONE(it):
-        aval = (<double*>np.PyArray_MultiIter_DATA(it, 0))[0]
-        (<fpt_t*>np.PyArray_MultiIter_DATA(it, 1))[0] = float2fixed(aval)
-        np.PyArray_MultiIter_NEXT(it)
+    out = np.empty(array.shape, dtype=np.object_)
+    it = np.nditer([array, out], flags=['refs_ok'], op_flags=['readwrite'], op_dtypes=[array.dtype, np.object_])
+    while not it.finished:
+        it[1] = FixedPointNumber(it[0])
+        it.iternext()
     return out
 
 def fixed2float(value):
@@ -75,13 +78,19 @@ cdef inline bint isSignExtended(fpt_t value):
 def add(f1, f2):
     result = f2 + f1
     if bool(result & _sign) ^ bool(result & _carry):
-        raise ValueError("Addition overflow")
+        if errorMode == 1:
+            raise ValueError("Addition overflow")
+        else:
+            result = -1 if result & _sign else _mask # max value
     return result
 
 def negate(f1):
     result = fpt(1<<_total)-f1
     if result == 1<<(_total-1):
-        raise ValueError("Negation overflow")
+        if errorMode == 1:
+            raise ValueError("Negation overflow")
+        else:
+            return _mask
     return signExtend(result & _mask)
 
 def sub(f1, f2):
@@ -93,13 +102,23 @@ cpdef fpt_t mul(fpt_t f1, fpt_t f2):
         print('warning: multiplication precision loss')
     result >>= _frac
     if not isSignExtended(result):
-        raise ValueError("Multiplication overflow")
+        if errorMode == 1:
+            raise ValueError("Multiplication overflow")
+        elif (f1 & _sign) ^ (f2 & _sign):
+            return _sign
+        else:
+            return _mask
     return result
     
 def div(f1, f2):
     result, remainder = divmod((signExtend(f1)<<_frac), signExtend(f2))
     if not isSignExtended(result):
-        raise ValueError("Division overflow")
+        if errorMode == 1:
+            raise ValueError("Division overflow {}/{}".format(fixed2float(f1), fixed2float(f2)))
+        elif (f1 & _sign) ^ (f2 & _sign):
+            return _sign
+        else:
+            return _mask
     if remainder != 0:
         print("warning: division precision loss")
     if result < 0:
@@ -141,6 +160,7 @@ class FixedPointNumber:
     
     def __mul__(self, other):
         if not isinstance(other, FixedPointNumber):
+            print(type(other))
             raise NotImplementedError()
         return FixedPointNumber(fpValue=mul(self.value, other.value))
     
@@ -150,12 +170,12 @@ class FixedPointNumber:
         self.value = mul(self.value, other.value)
         return self
     
-    def __div__(self, other):
+    def __truediv__(self, other):
         if not isinstance(other, FixedPointNumber):
             raise NotImplementedError()
         return FixedPointNumber(fpValue=div(self.value, other.value))
 
-    def __idiv__(self, other):
+    def __itruediv__(self, other):
         if not isinstance(other, FixedPointNumber):
             raise NotImplementedError()
         self.value = div(self.value, other.value)
@@ -163,6 +183,28 @@ class FixedPointNumber:
         
     def __neg__(self):
         return FixedPointNumber(fpValue=negate(self.value))
+    
+    def __abs__(self):
+        return abs(fixed2float(self.value))
+    
+    def __lt__(self, other):
+        if isinstance(other, FixedPointNumber):
+            return self.value < other.value
+        elif other == np.inf:
+            return True
+        else:
+            return self.value < FixedPointNumber(other).value
+    
+    def __gt__(self, other):
+        if isinstance(other, FixedPointNumber):
+            return self.value > other.value
+        elif other == np.inf:
+            return False
+        else:
+            return self.value > FixedPointNumber(other).value
+
+    def __float__(self):
+        return fixed2float(self.value)
     
     def __repr__(self):
         return strBits(self.value)

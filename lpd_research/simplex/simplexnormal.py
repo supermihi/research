@@ -25,6 +25,8 @@ def primalSimplexRevised(A, b, c, fixed=False):
     # I b
     if fixed:
         import fixedpoint as fp
+        global EPS
+        EPS = fp.fixed2float(3)
     A = np.hstack( (A, np.eye(A.shape[0])) )
     m, n = A.shape
     print("c<norm>={}".format(c))
@@ -42,22 +44,6 @@ def primalSimplexRevised(A, b, c, fixed=False):
         print("A<fp>={}".format(A))
         print("c<fp>={}".format(c))
     ki = np.zeros(m+1, dtype=np.int) # Wolfe's ad hoc procedure
-    
-    def pivot_fp(row, col, K=0):
-        pivotElem = Tred[row,col]
-        logger.info("pivoting with [{},{}]={}".format(row, col, pivotElem))
-        for i in xrange(m+1):
-            if i != row:
-                if np.abs(fp.fixed2float(Tred[i, col])) > FP_EPS:
-                    Tred[i,:m] -= (Tred[i, col]/pivotElem)*Tred[row,:m]
-                    if K == 0 or (i > 0 and ki[i] == K):
-                        Tred[i,m] -= (Tred[i, col]/pivotElem)*Tred[row,m]
-                    Tred[i,m+1] -= (Tred[i, col]/pivotElem)*Tred[row,m+1]
-                else:
-                    Tred[i, col] = 0
-        Tred[row,:] /= pivotElem
-        Tred[row,col] = 1
-
 
     def pivot(row, col, K=0):
         # make pivot operation with pivot element Tred[row,col]
@@ -67,14 +53,14 @@ def primalSimplexRevised(A, b, c, fixed=False):
         for i in xrange(m+1):
             if i != row:
                 if np.abs(Tred[i, col]) > EPS:
-                    Tred[i,:m] -= (Tred[i, col]/pivotElem)*Tred[row,:m]
+                    Tred[i,:m] -= Tred[row,:m]*(Tred[i, col]/pivotElem)
                     if K == 0 or (i > 0 and ki[i] == K):
-                        Tred[i,m] -= (Tred[i, col]/pivotElem)*Tred[row,m]
-                    Tred[i,m+1] -= (Tred[i, col]/pivotElem)*Tred[row,m+1]
+                        Tred[i,m] -= Tred[row,m]*(Tred[i, col]/pivotElem)
+                    Tred[i,m+1] -= Tred[row,m+1]*(Tred[i, col]/pivotElem)
                 else:
-                    Tred[i, col] = 0
+                    Tred[i, col] = fp.FixedPointNumber(0) if fixed else 0
         Tred[row,:] /= pivotElem
-        Tred[row,col] = 1
+        Tred[row,col] = fp.FixedPointNumber(1) if fixed else 1
         #Tred[row,col] = 1 # fix numerical errors
         # maybe swap these steps
     
@@ -83,8 +69,11 @@ def primalSimplexRevised(A, b, c, fixed=False):
         for i in range(1,m+1):
             if np.abs(Tred[i,m]) < EPS:
                 ki[i] += 1
-                logger.debug("INCREASING k[{}] to {} (0)".format(i, ki[i]))
-                Tred[i,m] = np.random.randint(2,17)
+                print("INCREASING k[{}] to {} (0)".format(i, ki[i]))
+                if fixed:
+                    Tred[i,m] = fp.FixedPointNumber(np.random.randint(2,4))
+                else:
+                    Tred[i,m] = np.random.randint(2,17)
         logger.debug('iteration {}'.format(iteration))
         logger.debug('objective value z={}'.format(Tred[0,m]))
         
@@ -94,7 +83,13 @@ def primalSimplexRevised(A, b, c, fixed=False):
         # - set found = 1 if nonbasic at ub with pos reduced costs is found
         for j_ind, j in enumerate(N):
             cj_bar = c[j] + np.dot(Tred[0,:m], A[:,j])
+            if c[j] < 0:
+                print("c[j]={}".format(c[j]))
+                print("Tred[0,:m]={}".format(Tred[0,:m]))
+                print("A[:,j]={}".format(A[:,j]))
+                print("cj_bar={}".format(cj_bar))
             if cj_bar < -EPS:
+                print("cj_bar {} < -EPS".format(cj_bar))
                 found = 1
                 # compute augmented column
                 Tred[1:,m+1] = np.dot(Tred[1:, :m], A[:, j])
@@ -111,14 +106,14 @@ def primalSimplexRevised(A, b, c, fixed=False):
                             continue
                         if Tred[i,m+1] > EPS:
                             quotient = Tred[i,m]/Tred[i,m+1]
-                            if quotient < delta: # BLAND or (quotient < delta+EPS and B[i-1] < B[min_row-1]):
+                            if quotient < delta:
                                 delta = quotient
                                 min_row = i
                     if delta == np.inf:
                         logger.debug("K DECREASE")
                         assert K > 0
                         for i in np.flatnonzero(ki == K):
-                            Tred[i,m] = 0
+                            Tred[i,m] = fp.FixedPointNumber(0) if fixed else 0
                             ki[i] -= 1
                         K -= 1
                         logger.debug("ki={}".format(ki))                    
@@ -139,11 +134,12 @@ def primalSimplexRevised(A, b, c, fixed=False):
             logger.debug("final b={}".format(Tred[1:,m]))
             logger.debug("{} iterations".format(iteration))
             for i in np.flatnonzero(ki > 0):
-                Tred[i, m] = 0
+                Tred[i, m] = fp.FixedPointNumber(0) if fixed else 0
             x = np.zeros(n-m, dtype=np.double)
             for r_ind, r in enumerate(B):
                 if r < n-m:
                     x[r] = Tred[r_ind+1,m]
+                    print(x[r], Tred[r_ind+1,m])
             logger.debug("x={}".format(x))
             return -Tred[0,m], x 
         

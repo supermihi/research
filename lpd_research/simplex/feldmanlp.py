@@ -43,13 +43,15 @@ if __name__ == "__main__":
     code = HammingCode(3)
     #code = LinearCode("/home/helmling/Forschung/codez/Tanner_155_64.alist")
     #code = LinearCode("/home/helmling/Forschung/codes/ira_40_20_m.alist")
-    #code = LinearCode("ldpc_20_10_lp_test.alist")
+    code = LinearCode("ldpc_20_10_lp_test.alist")
     #decoder_ref = CplexLPDecoder(code)
+    import fixedpoint as fp
+    fp.setPrecision(8, 4)
     decoder_new = CustomFeldmanLPDecoder(code, boundedVars=False, fixedPoint=True)
     #print(matrix.strBinary(decoder_new.A))
     #print(matrix.strBinary(decoder_new.b)) 
-    chan =  AWGNC(snr=1.0, coderate=code.rate, seed=2198437)
-    signalg = SignalGenerator(code, chan, False)
+    chan =  AWGNC(snr=0.0, coderate=code.rate, seed=2198437)
+    signalg = SignalGenerator(code, chan, True)
     logging.basicConfig(level=logging.DEBUG)
     for i in range(10):
         print(i)
@@ -57,7 +59,8 @@ if __name__ == "__main__":
         #llr = np.random.standard_normal(code.blocklength)
         #decoder_ref.decode(llr)
         decoder_new.decode(llr)
-        if not np.allclose(decoder_ref.solution, decoder_new.solution):
+        print(decoder_new.solution)
+        if False: #not np.allclose(decoder_ref.solution, decoder_new.solution):
             print(":(")
             print(decoder_ref.objectiveValue)
             print(decoder_new.objectiveValue)
