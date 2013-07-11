@@ -3,7 +3,7 @@ import numpy as np
 cimport numpy as np
 fpt = np.int64
 ctypedef np.int64_t fpt_t
-
+np.import_array()
 cdef:
     int _frac, _int, _total
     double _scale, _revscale
@@ -23,8 +23,10 @@ def setPrecision(int total, int fractional):
     _fracMask = 2**_frac-1
     _sign = fpt(1) << (_total-1)
     _carry = fpt(1) << _total
-    _negExtension = -1 ^ _mask
+    _negExtension = fpt(-1 ^ _mask)
+
 setPrecision(6, 2)
+
 
 def float2fixed(value):
     if value < 0:
@@ -37,7 +39,16 @@ def float2fixed(value):
         if fixed >> (_total-1):
             raise ValueError("Overflow: {} too big".format(value))
     return fixed
-    
+
+def np_float2fixed(array):
+    out = np.empty(array.shape, fpt)
+    cdef np.broadcast it = np.broadcast(array, out)
+    while np.PyArray_MultiIter_NOTDONE(it):
+        aval = (<double*>np.PyArray_MultiIter_DATA(it, 0))[0]
+        (<fpt_t*>np.PyArray_MultiIter_DATA(it, 1))[0] = float2fixed(aval)
+        np.PyArray_MultiIter_NEXT(it)
+    return out
+
 def fixed2float(value):
     result =  (value & _mask)*_scale
     if value & _sign:
@@ -61,8 +72,8 @@ cdef inline bint isSignExtended(fpt_t value):
     else:
         return (value & _negExtension) == 0
 
-cpdef fpt_t add(fpt_t f1, fpt_t f2):
-    cdef fpt_t result = f2 + f1
+def add(f1, f2):
+    result = f2 + f1
     if bool(result & _sign) ^ bool(result & _carry):
         raise ValueError("Addition overflow")
     return result
@@ -71,7 +82,7 @@ def negate(f1):
     result = fpt(1<<_total)-f1
     if result == 1<<(_total-1):
         raise ValueError("Negation overflow")
-    return result & _mask
+    return signExtend(result & _mask)
 
 def sub(f1, f2):
     return add(f1, negate(f2))
@@ -84,7 +95,6 @@ cpdef fpt_t mul(fpt_t f1, fpt_t f2):
     if not isSignExtended(result):
         raise ValueError("Multiplication overflow")
     return result
-    
     
 def div(f1, f2):
     result, remainder = divmod((signExtend(f1)<<_frac), signExtend(f2))

@@ -11,7 +11,7 @@ degenEps = 1 #1/3
 import itertools
 
 
-def primalSimplexRevised(A, b, c):
+def primalSimplexRevised(A, b, c, fixed=False):
     """Apply revised primal simplex to the problem min cx s.t. Ax <= b, x >= 0.
 
     """
@@ -23,16 +23,42 @@ def primalSimplexRevised(A, b, c):
     # and the reduced tableau initialized as
     # 0 0
     # I b
+    if fixed:
+        import fixedpoint as fp
     A = np.hstack( (A, np.eye(A.shape[0])) )
     m, n = A.shape
+    print("c<norm>={}".format(c))
     c = np.hstack( (c, np.zeros(m)) )
     B = np.arange(n-m, n) # basics
     N = np.arange(n-m) # nonbasics
-    Tred = np.zeros( (m+1, m+2), dtype=np.double )
+    Tred = np.zeros( (m+1, m+2), dtype=np.double)
     Tred[1:,:m] = np.eye(m)
     Tred[1:,m] = b
+    if fixed:
+        Tred = fp.np_float2fixed(Tred)
+        A = fp.np_float2fixed(A)
+        c = fp.np_float2fixed(c)
+        b = fp.np_float2fixed(b)
+        print("A<fp>={}".format(A))
+        print("c<fp>={}".format(c))
     ki = np.zeros(m+1, dtype=np.int) # Wolfe's ad hoc procedure
     
+    def pivot_fp(row, col, K=0):
+        pivotElem = Tred[row,col]
+        logger.info("pivoting with [{},{}]={}".format(row, col, pivotElem))
+        for i in xrange(m+1):
+            if i != row:
+                if np.abs(fp.fixed2float(Tred[i, col])) > FP_EPS:
+                    Tred[i,:m] -= (Tred[i, col]/pivotElem)*Tred[row,:m]
+                    if K == 0 or (i > 0 and ki[i] == K):
+                        Tred[i,m] -= (Tred[i, col]/pivotElem)*Tred[row,m]
+                    Tred[i,m+1] -= (Tred[i, col]/pivotElem)*Tred[row,m+1]
+                else:
+                    Tred[i, col] = 0
+        Tred[row,:] /= pivotElem
+        Tred[row,col] = 1
+
+
     def pivot(row, col, K=0):
         # make pivot operation with pivot element Tred[row,col]
         
