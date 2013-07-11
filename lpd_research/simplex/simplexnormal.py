@@ -29,7 +29,6 @@ def primalSimplexRevised(A, b, c, fixed=False):
         EPS = fp.fixed2float(3)
     A = np.hstack( (A, np.eye(A.shape[0])) )
     m, n = A.shape
-    print("c<norm>={}".format(c))
     c = np.hstack( (c, np.zeros(m)) )
     B = np.arange(n-m, n) # basics
     N = np.arange(n-m) # nonbasics
@@ -41,8 +40,6 @@ def primalSimplexRevised(A, b, c, fixed=False):
         A = fp.np_float2fixed(A)
         c = fp.np_float2fixed(c)
         b = fp.np_float2fixed(b)
-        print("A<fp>={}".format(A))
-        print("c<fp>={}".format(c))
     ki = np.zeros(m+1, dtype=np.int) # Wolfe's ad hoc procedure
 
     def pivot(row, col, K=0):
@@ -69,7 +66,6 @@ def primalSimplexRevised(A, b, c, fixed=False):
         for i in range(1,m+1):
             if np.abs(Tred[i,m]) < EPS:
                 ki[i] += 1
-                print("INCREASING k[{}] to {} (0)".format(i, ki[i]))
                 if fixed:
                     Tred[i,m] = fp.FixedPointNumber(np.random.randint(2,4))
                 else:
@@ -83,13 +79,7 @@ def primalSimplexRevised(A, b, c, fixed=False):
         # - set found = 1 if nonbasic at ub with pos reduced costs is found
         for j_ind, j in enumerate(N):
             cj_bar = c[j] + np.dot(Tred[0,:m], A[:,j])
-            if c[j] < 0:
-                print("c[j]={}".format(c[j]))
-                print("Tred[0,:m]={}".format(Tred[0,:m]))
-                print("A[:,j]={}".format(A[:,j]))
-                print("cj_bar={}".format(cj_bar))
             if cj_bar < -EPS:
-                print("cj_bar {} < -EPS".format(cj_bar))
                 found = 1
                 # compute augmented column
                 Tred[1:,m+1] = np.dot(Tred[1:, :m], A[:, j])

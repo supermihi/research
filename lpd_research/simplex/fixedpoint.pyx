@@ -75,8 +75,8 @@ cdef inline bint isSignExtended(fpt_t value):
     else:
         return (value & _negExtension) == 0
 
-def add(f1, f2):
-    result = f2 + f1
+cdef add(f1, f2):
+    cdef fpt_t result = f2 + f1
     if bool(result & _sign) ^ bool(result & _carry):
         if errorMode == 1:
             raise ValueError("Addition overflow")
@@ -84,8 +84,8 @@ def add(f1, f2):
             result = -1 if result & _sign else _mask # max value
     return result
 
-def negate(f1):
-    result = fpt(1<<_total)-f1
+cdef negate(f1):
+    cdef fpt_t result = fpt(1<<_total)-f1
     if result == 1<<(_total-1):
         if errorMode == 1:
             raise ValueError("Negation overflow")
@@ -93,10 +93,10 @@ def negate(f1):
             return _mask
     return signExtend(result & _mask)
 
-def sub(f1, f2):
+cdef sub(f1, f2):
     return add(f1, negate(f2))
     
-cpdef fpt_t mul(fpt_t f1, fpt_t f2):
+cdef fpt_t mul(fpt_t f1, fpt_t f2):
     cdef fpt_t result = f1 * f2
     if result & _fracMask:
         print('warning: multiplication precision loss')
@@ -110,7 +110,7 @@ cpdef fpt_t mul(fpt_t f1, fpt_t f2):
             return _mask
     return result
     
-def div(f1, f2):
+cdef div(fpt_t f1, fpt_t f2):
     result, remainder = divmod((signExtend(f1)<<_frac), signExtend(f2))
     if not isSignExtended(result):
         if errorMode == 1:
