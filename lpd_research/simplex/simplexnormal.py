@@ -11,7 +11,7 @@ degenEps = 1 #1/3
 import itertools
 
 
-def primalSimplexRevised(A, b, c, fixed=False):
+def primalSimplexRevised(A, b, c, fixed=None):
     """Apply revised primal simplex to the problem min cx s.t. Ax <= b, x >= 0.
 
     """
@@ -23,9 +23,11 @@ def primalSimplexRevised(A, b, c, fixed=False):
     # and the reduced tableau initialized as
     # 0 0
     # I b
+    stats = {}
     if fixed:
         import fixedpoint as fp
         global EPS
+        fp.setPrecision(*fixed)
         EPS = fp.fixed2float(3)
     A = np.hstack( (A, np.eye(A.shape[0])) )
     m, n = A.shape
@@ -35,9 +37,16 @@ def primalSimplexRevised(A, b, c, fixed=False):
     Tred = np.zeros( (m+1, m+2), dtype=np.double)
     Tred[1:,:m] = np.eye(m)
     Tred[1:,m] = b
+    maxAbsEntry = 0 # ab 2. zeile
+    minAbsEntry = 1 # ganzes Tableau
+    maxNonzeroEntries = 0 # ganze tableau
     if fixed:
         Tred = fp.np_float2fixed(Tred)
         A = fp.np_float2fixed(A)
+        maxFp = 2**(fixed[0]-fixed[1]-1)-2**-fixed[1]
+        if np.max(np.abs(c)) > maxFp:
+            print("scaling function by {}".format(2/3*maxFp/np.max(np.abs(c))))
+            c *= 2/3*maxFp/np.max(np.abs(c))                
         c = fp.np_float2fixed(c)
         b = fp.np_float2fixed(b)
     ki = np.zeros(m+1, dtype=np.int) # Wolfe's ad hoc procedure
@@ -61,13 +70,23 @@ def primalSimplexRevised(A, b, c, fixed=False):
         #Tred[row,col] = 1 # fix numerical errors
         # maybe swap these steps
     
-    for iteration in itertools.count():
+    for iteration in itertools.count(1):
+        # update statistics
+        nmax =  np.max(np.abs(Tred[1:,:]))
+        if nmax > maxAbsEntry:
+            maxAbsEntry = nmax
+        nmin = np.min(np.abs(Tred[np.nonzero(Tred)]))
+        if nmin < minAbsEntry:
+            minAbsEntry = nmin
+        nnonzero = np.sum(Tred!=0)/Tred.size
+        if nnonzero > maxNonzeroEntries:
+            maxNonzeroEntries = nnonzero 
         # ad hoc procedure, step (1)
         for i in range(1,m+1):
             if np.abs(Tred[i,m]) < EPS:
                 ki[i] += 1
                 if fixed:
-                    Tred[i,m] = fp.FixedPointNumber(np.random.randint(2,4))
+                    Tred[i,m] = fp.FixedPointNumber(fpValue=np.random.randint(3,15))
                 else:
                     Tred[i,m] = np.random.randint(2,17)
         logger.debug('iteration {}'.format(iteration))
@@ -123,15 +142,18 @@ def primalSimplexRevised(A, b, c, fixed=False):
             logger.debug("final B={}".format(B))
             logger.debug("final b={}".format(Tred[1:,m]))
             logger.debug("{} iterations".format(iteration))
+            stats["iterations"] = iteration
+            stats["maxnonzeros"] = maxNonzeroEntries
+            stats["maxabs"] = maxAbsEntry
+            stats["minabs"] = minAbsEntry
             for i in np.flatnonzero(ki > 0):
                 Tred[i, m] = fp.FixedPointNumber(0) if fixed else 0
             x = np.zeros(n-m, dtype=np.double)
             for r_ind, r in enumerate(B):
                 if r < n-m:
                     x[r] = Tred[r_ind+1,m]
-                    print(x[r], Tred[r_ind+1,m])
             logger.debug("x={}".format(x))
-            return -Tred[0,m], x 
+            return -Tred[0,m], x, stats
         
         
 

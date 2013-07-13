@@ -23,6 +23,7 @@ def primal01SimplexRevised(A, b, c):
     # and the reduced tableau initialized as
     # 0 0
     # I b
+    stats = {}
     A = np.hstack( (A, np.eye(A.shape[0])) )
     m, n = A.shape
     c = np.hstack( (c, np.zeros(m)) )
@@ -32,6 +33,9 @@ def primal01SimplexRevised(A, b, c):
     Tred = np.zeros( (m+1, m+2), dtype=np.double )
     Tred[1:,:m] = np.eye(m)
     Tred[1:,m] = b
+    maxAbsEntry = 0 # ab 2. zeile
+    minAbsEntry = 1 # ganzes Tableau
+    maxNonzeroEntries = 0 # ganze tableau
     ki = np.zeros(m+1, dtype=np.int)
     kiLU = np.zeros(m+1, dtype=np.int)
     K = 0
@@ -62,20 +66,30 @@ def primal01SimplexRevised(A, b, c):
         Tred[i, m] = 0 if Tred[i,m] < .5 or B[i-1] >= n-m else 1 # kiLU[i] == 0 else 1
         ki[i] -= 1
     
-    for iteration in itertools.count():
+    for iteration in itertools.count(1):
         # ad hoc procedure, step (1)
-        for i in range(1, m+1):
-            if np.abs(Tred[i,m]) < EPS:
-                #assert kiLU[i] == 0
-                ki[i] += 1
-                kiLU[i] = 0
-                logger.debug("INCREASING k[{}] to {} (0)".format(i, ki[i]))
-                Tred[i,m] = np.random.random()*degenEps
-            elif B[i-1] < n-m and Tred[i,m] > 1 - EPS:
-                ki[i] += 1
-                kiLU[i] = 1
-                Tred[i,m] = 1-np.random.random()*degenEps
-                logger.debug("INCREASING k[{}] to {} (1)".format(i, ki[i]))
+#         for i in range(1, m+1):
+#             if np.abs(Tred[i,m]) < EPS:
+#                 #assert kiLU[i] == 0
+#                 ki[i] += 1
+#                 kiLU[i] = 0
+#                 logger.debug("INCREASING k[{}] to {} (0)".format(i, ki[i]))
+#                 Tred[i,m] = np.random.random()*degenEps
+#             elif B[i-1] < n-m and Tred[i,m] > 1 - EPS:
+#                 ki[i] += 1
+#                 kiLU[i] = 1
+#                 Tred[i,m] = 1-np.random.random()*degenEps
+#                 logger.debug("INCREASING k[{}] to {} (1)".format(i, ki[i]))
+        nmax =  np.max(np.abs(Tred[1:,:]))
+        if nmax > maxAbsEntry:
+            maxAbsEntry = nmax
+        nmin = np.min(np.abs(Tred[np.nonzero(Tred)]))
+        if nmin < minAbsEntry:
+            minAbsEntry = nmin
+        nnonzero = np.sum(Tred!=0)/Tred.size
+        if nnonzero > maxNonzeroEntries:
+            maxNonzeroEntries = nnonzero
+            
         K = np.max(ki)
         logger.debug('iteration {}'.format(iteration))
         logger.debug('objective value z={}'.format(Tred[0,m]))
@@ -106,9 +120,9 @@ def primal01SimplexRevised(A, b, c):
                     logger.debug("situation 1/2 with j={}, j_ind={} (cj_bar={})".format(j, j_ind, cj_bar))
                     while case == -1:
                         logger.debug("K={}".format(K))
-                        #for i in xrange(1,m+1):
-                        logger.debug("nonzero ki={}".format(np.flatnonzero(ki == K)))
-                        for i in np.flatnonzero(ki == K):
+                        for i in xrange(1,m+1):
+                            logger.debug("nonzero ki={}".format(np.flatnonzero(ki == K)))
+                            #for i in np.flatnonzero(ki == K):
                             if i == 0:
                                 continue
                             if Tred[i,m+1] > EPS: # relevant for delta_2
@@ -124,19 +138,17 @@ def primal01SimplexRevised(A, b, c):
                                         delta = quotient
                                         min_row = i
                                         case = 2
-                        if case == -1:
-                            logger.debug("K DECREASE")
-                            logger.debug("ki={}".format(ki))
-                            assert K > 0
-                            for i in np.flatnonzero(ki == K):
-                                reduceKi(i)
-                            K -= 1
-                            logger.debug("ki={}".format(ki))
-                        elif j < n-m and delta >= 1:
+#                         if case == -1:
+#                             logger.debug("K DECREASE")
+#                             logger.debug("ki={}".format(ki))
+#                             assert K > 0
+#                             for i in np.flatnonzero(ki == K):
+#                                 reduceKi(i)
+#                             K -= 1
+#                             logger.debug("ki={}".format(ki))
+                        if j < n-m and delta >= 1:
                             delta = 1
                             case = 0
-                            logger.debug("LU")
-                            raw_input()
                         
                     assert delta < np.inf
                     assert case > -1
@@ -146,7 +158,7 @@ def primal01SimplexRevised(A, b, c):
                         logger.debug("case delta_1(a)")
                         # case (3): L->U
                         Tred[:,m] -= Tred[:,m+1] # update \tilde b
-                        assert Tred[1:,m] > -EPS
+                        assert np.all(Tred[1:,m] > -EPS)
                         LU[j_ind] = 1 # move j from L to U
                     elif case == 1:
                         # normal basis exchange: case (1)
@@ -154,7 +166,7 @@ def primal01SimplexRevised(A, b, c):
                         assert min_row > 0
                         N[j_ind] = B[min_row-1]
                         B[min_row-1] = j
-                        pivot(min_row, m+1, K)
+                        pivot(min_row, m+1)
                     else:
                         # case (5): L -> B, B-> U
                         logger.debug("case delta_3(a)")
@@ -162,27 +174,17 @@ def primal01SimplexRevised(A, b, c):
                         N[j_ind] = B[min_row-1]
                         B[min_row-1] = j
                         LU[j_ind] = 1
-                        print(ki[min_row])
-                        if ki[min_row] > 0:
-                            #ki[min_row] -= 1
-                            Tred[min_row, m] = 0 if Tred[min_row,m] < .5 else 1
-                            K = np.max(ki)
                         Tred[min_row, m] -= 1
-                        print(Tred[min_row,m], ki[min_row])
-                        pivot(min_row, m+1, K)
-                        print(Tred[min_row,m])
-                        print(Tred[1:,m])
-                        print(ki)
+                        pivot(min_row, m+1)
                         #ki[min_row] -= 1
-                        raw_input()
                 else:
                     assert found == 1
                     logger.debug("situation 3 with j={}, j_ind={} (cj_bar={})".format(j, j_ind, cj_bar))
                     #delta_1 = 1
                     while case == -1:
                         logger.debug("K={}".format(K))
-                        # for i in xrange(1, m+1):
-                        for i in np.flatnonzero(ki == K):
+                        for i in xrange(1, m+1):
+                        #for i in np.flatnonzero(ki == K):
                             if i == 0:
                                 continue
                             if Tred[i, m+1] < -EPS:
@@ -198,27 +200,24 @@ def primal01SimplexRevised(A, b, c):
                                         delta = quotient
                                         min_row = i
                                         case = 2
-                        if case == -1:
-                            logger.debug("K DECREASE")
-                            logger.debug("ki={}".format(ki))
-                            assert K > 0
-                            for i in np.flatnonzero(ki == K):
-                                reduceKi(i)
-                            K -= 1
-                            logger.debug("ki={}".format(ki))
-                        elif delta >= 1:
+#                         if case == -1:
+#                             logger.debug("K DECREASE")
+#                             logger.debug("ki={}".format(ki))
+#                             assert K > 0
+#                             for i in np.flatnonzero(ki == K):
+#                                 reduceKi(i)
+#                             K -= 1
+#                             logger.debug("ki={}".format(ki))
+                        if delta >= 1:
                             delta = 1
-                            case = 0
-                            logger.debug("UL")
-                            raw_input()
-                        
+                            case = 0                        
                     assert delta < np.inf
                     if case == 0:
                         logger.debug("case delta_1(b)")
                         # case (4): U -> L
                         Tred[:,m] += Tred[:,m+1] # update \tilde b
                         LU[j_ind] = 0
-                        assert Tred[1:,m] > -EPS
+                        assert np.all(Tred[1:,m] > -EPS)
                     elif case == 1:
                         # case (6): U -> B, B-> L
                         logger.info("case delta_2(b)")
@@ -229,7 +228,7 @@ def primal01SimplexRevised(A, b, c):
                         B[min_row-1] = j
                         LU[j_ind] = 0
                         #Tred[:,m] += Tred[:,m+1]
-                        pivot(min_row, m+1, K)
+                        pivot(min_row, m+1)
                         Tred[min_row, m] += 1
                     else:
                         logger.info("case delta_3(b)")
@@ -240,7 +239,7 @@ def primal01SimplexRevised(A, b, c):
                         #    Tred[min_row, m] = 0
                         N[j_ind] = B[min_row-1]
                         B[min_row-1] = j
-                        pivot(min_row, m+1, K)
+                        pivot(min_row, m+1)
                         Tred[min_row, m] += 1
                 logger.debug("b = {}".format(Tred[:,m]))
                 logger.debug("ki = {}".format(ki))
@@ -248,8 +247,12 @@ def primal01SimplexRevised(A, b, c):
         if found == -1:
             logger.debug('no reduced costs in iteration {}'.format(iteration))
             logger.debug("final ki={}".format(ki))
-            for i in np.flatnonzero(ki > 0):
-                reduceKi(i)
+#             for i in np.flatnonzero(ki > 0):
+#                 reduceKi(i)
+            stats["iterations"] = iteration
+            stats["maxnonzeros"] = maxNonzeroEntries
+            stats["maxabs"] = maxAbsEntry
+            stats["minabs"] = minAbsEntry
             x = np.zeros(n-m, dtype=np.double)
             for r_ind, r in enumerate(B):
                 if r < n-m:
@@ -258,7 +261,7 @@ def primal01SimplexRevised(A, b, c):
                 if r < n-m and LU[r_ind] == 1:
                     x[r] = 1
             logger.debug("x={}".format(x))
-            return -Tred[0,m], x 
+            return -Tred[0,m], x, stats 
         
         
 

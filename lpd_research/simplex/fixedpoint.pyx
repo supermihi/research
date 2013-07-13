@@ -99,7 +99,8 @@ cdef sub(f1, f2):
 cdef fpt_t mul(fpt_t f1, fpt_t f2):
     cdef fpt_t result = f1 * f2
     if result & _fracMask:
-        print('warning: multiplication precision loss')
+        pass
+        #print('warning: multiplication precision loss')
     result >>= _frac
     if not isSignExtended(result):
         if errorMode == 1:
@@ -120,7 +121,8 @@ cdef div(fpt_t f1, fpt_t f2):
         else:
             return _mask
     if remainder != 0:
-        print("warning: division precision loss")
+        pass
+        #print("warning: division precision loss")
     if result < 0:
         result = negate(-result)
     return result
