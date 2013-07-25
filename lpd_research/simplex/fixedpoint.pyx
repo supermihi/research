@@ -64,7 +64,7 @@ def strBits(value):
 def printBits(value):
     print(strBits(value))
 
-def signExtend(value):
+cdef fpt_t signExtend(fpt_t value):
     if value & _sign:
         return _negExtension | value
     return value
@@ -128,7 +128,9 @@ cdef div(fpt_t f1, fpt_t f2):
     return result
 
 import numbers
-class FixedPointNumber:
+cdef class FixedPointNumber:
+
+    cdef public fpt_t value
     
     def __init__(self, floatValue=None, fpValue=None):
         if floatValue is not None:
@@ -151,13 +153,14 @@ class FixedPointNumber:
     
     def __sub__(self, other):
         if not isinstance(other, FixedPointNumber):
-            raise NotImplementedError()
-        return FixedPointNumber(fpValue=sub(self.value, other.value))
+            return self - FixedPointNumber(other)
+        return FixedPointNumber(fpValue=sub(self.value, (<FixedPointNumber>other).value))
     
     def __isub__(self, other):
         if not isinstance(other, FixedPointNumber):
-            raise NotImplementedError()
-        self.value = sub(self.value, other.value)
+            self.value = sub(self.value, float2fixed(other))
+        else:
+            self.value = sub(self.value, other.value)
         return self
     
     def __mul__(self, other):
@@ -189,21 +192,44 @@ class FixedPointNumber:
     def __abs__(self):
         return abs(fixed2float(self.value))
     
-    def __lt__(self, other):
-        if isinstance(other, FixedPointNumber):
-            return self.value < other.value
-        elif other == np.inf:
-            return True
+    def __richcmp__(FixedPointNumber self, other, int op):
+        if op == 0:
+            if isinstance(other, FixedPointNumber):
+                return self.value < other.value
+            elif other == np.inf:
+                return True
+            else:
+                return self.value < float2fixed(other)
+        elif op == 4:
+            if isinstance(other, FixedPointNumber):
+                return self.value > other.value
+            elif other == np.inf:
+                return False
+            else:
+                return self.value > float2fixed(other)
+        elif op == 2:
+            if isinstance(other, FixedPointNumber):
+                return self.value == (<FixedPointNumber>other).value
+            else:
+                return fixed2float(self.value) == other 
+        elif op == 3:
+            if isinstance(other, FixedPointNumber):
+                return self.value != (<FixedPointNumber>other).value
+            else:
+                return fixed2float(self.value) != other
+        elif op == 5:
+            if isinstance(other, FixedPointNumber):
+                return self.value >= (<FixedPointNumber>other).value
+            else:
+                return fixed2float(self.value) >= other
+        elif op == 1:
+            if isinstance(other, FixedPointNumber):
+                return self.value <= (<FixedPointNumber>other).value
+            else:
+                return fixed2float(self.value) <= other
         else:
-            return self.value < FixedPointNumber(other).value
-    
-    def __gt__(self, other):
-        if isinstance(other, FixedPointNumber):
-            return self.value > other.value
-        elif other == np.inf:
-            return False
-        else:
-            return self.value > FixedPointNumber(other).value
+            print("scheisse", op)
+            return -1
 
     def __float__(self):
         return fixed2float(self.value)

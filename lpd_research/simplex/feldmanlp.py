@@ -7,18 +7,20 @@
 
 from lpdecoding.core import Decoder
 from lpdecoding.decoders import lp_toolkit
-import simplexnormal, simplex
+import simplexnormal, simplex, dualsimpleximproved
+from collections import OrderedDict
 import numpy as np
 
 class CustomFeldmanLPDecoder(Decoder):
     
-    def __init__(self, code, name=None, boundedVars=True, fixedPoint=False):
+    def __init__(self, code, name=None, boundedVars=True, fixedPoint=False, dual=False):
         Decoder.__init__(self, code)
         if name is None:
             name = "LP Decoder(simplex)"
         self.name = name
         self.boundedVars = boundedVars
         self.fixedPoint = fixedPoint
+        self.dual = dual
         A, b = lp_toolkit.forbiddenSetInequalities(code.parityCheckMatrix)
         if boundedVars:
             self.A, self.b = A, b
@@ -27,8 +29,10 @@ class CustomFeldmanLPDecoder(Decoder):
             self.A = np.vstack( (A, np.eye(code.blocklength)))
         
     def solve(self, hint=None, lb=1):
-        if self.boundedVars:
-            z, x, stats = simplex.primal01SimplexRevised(self.A, self.b, self.llrVector)
+        if self.dual:
+            z, x, stats = dualsimpleximproved.dualboundedsimplex(self.A, self.b, self.llrVector, self.fixedPoint)
+        elif self.boundedVars:
+            z, x, stats = simplex.primal01SimplexRevised(self.A, self.b, self.llrVector, self.fixedPoint)
         else:
             z, x, stats = simplexnormal.primalSimplexRevised(self.A, self.b, self.llrVector, self.fixedPoint)
         self.objectiveValue = z
