@@ -94,7 +94,7 @@ cdef class CSPDecoder(Decoder):
         """
 
         Decoder.__init__(self, code)
-        self.k = code.prepareConstraintsData()
+        self.k = len(code.prepareConstraintsData())
         self.blocklength = code.blocklength
         self.maxMajorCycles = maxMajorCycles
         self.measureTimes = measureTimes
