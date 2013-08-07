@@ -1,18 +1,47 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, print_function
 
+import itertools
+
 import numpy as np
 
+from lpdecoding import matrix
 from lpdecoding.core import Decoder
 from lpdecoding.codes import trellis
 from lpdecoding.algorithms.path import shortestPathScalarization
+from lpdecoding.codes.turbolike import LTETurboCode
+
+
+def FTran(L, U, P, b):
+    """Solves Ax = b for x by FTran operation where PA=LU."""
+    k = L.shape[0]
+    y = np.empty(k)
+    b = np.dot(P, b)
+    for i in range(k):
+        y[i] = (b[i] - np.dot(L[i,:i], y[:i]))/L[i,i]
+    x = np.empty(k)
+    for i in range(k-1, -1, -1):
+        x[i] = (y[i] - np.dot(U[i,i+1:], x[i+1:]))/U[i,i]
+    return x
+
+def BTran(L, U, P, b):
+    """Solves A^Tx + b for x by BTran operation where PA=LU."""
+    k = L.shape[0]
+    y = np.empty(k)
+    for i in range(k):
+        y[i] = (b[i] - np.dot(U[:i,i], y[:i]))/U[i,i]
+    x = np.empty(k)
+    for i in range(k-1, -1, -1):
+        x[i] = (y[i] - np.dot(L[i+1:,i], x[i+1:]))/L[i,i]
+    return np.dot(P.T, x)
+
 
 class DantzigWolfeTurboDecoder(Decoder):
     
     def __init__(self, code, name=None):
         Decoder.__init__(self, code)
         if name is None:
-            name = "DantzigWolfeTurboDecoder"
+            name = self.__class__.__name__
         self.name = name
         self.pairs = self.code.prepareConstraintsData()
         self.k = len(self.pairs)
@@ -25,8 +54,8 @@ class DantzigWolfeTurboDecoder(Decoder):
     def fixConstraintValue(self, j, val=0):
         labelStr = { trellis.INFO : "info", trellis.PARITY: "parity"}
         (t1, s1, b1), (t2, s2, b2) = self.pairs[j]
-        val1 = self.llrVector[self.segAndLabForCodeBit[(s1,b1)]]
-        val2 = self.llrVector[self.segAndLabForCodeBit[(s2,b2)]]
+        val1 = self.llrVector[self.segAndLabForCodeBit[(t1[s1],b1)]]
+        val2 = self.llrVector[self.segAndLabForCodeBit[(t2[s2],b2)]]
         assert val1 == val2
         if val == 0:
             if val1 + val2 > 0:
@@ -38,27 +67,87 @@ class DantzigWolfeTurboDecoder(Decoder):
             bit2 = 0
         else:
             bit1 = bit2 = -1
-        setattr(s1, "fix_{}".format(labelStr[b1]), bit1)
-        setattr(s2, "fix_{}".format(labelStr[b2]), bit2)
+        setattr(t1[s1], "fix_{}".format(labelStr[b1]), bit1)
+        setattr(t2[s2], "fix_{}".format(labelStr[b2]), bit2)
         
     def solve(self, hint=None, lb=1):
         # find starting basis
-        B = np.zeros( (self.m, self.m) )
+        self.code.setCost(self.llrVector)
+        B = np.empty( (self.m, self.m) )
+        c = np.zeros(self.m)
         B[0,:] = 1
-        lamb = 1
+        codewords = [np.zeros(self.code.blocklength) for _ in range(self.m)]
         mu = np.zeros(self.k)
-        codeword = np.empty(self.code.blocklength)
-        for j in range(self.k+1):
-            g_result = np.zeros(self.k)
+        for j in range(self.k):
+            self.fixConstraintValue(j, 0)
+        for j in range(self.m):
             if j > 0:
                 self.fixConstraintValue(j-1, 1)
-            for jj in range(j, self.k+1):
-                self.fixConstraintValue(jj-1, 0)
+            g_result = np.zeros(self.k)
             for enc in self.code.encoders:
-                shortestPathScalarization(enc.trellis, lamb, mu, g_result, codeword)
-            B[j, 1:] = g_result
+                c[j] += shortestPathScalarization(enc.trellis, 1, mu, g_result, codewords[j])
+            B[1:, j] = g_result
             if j > 0:
-                self.fixConstraintValue(j, -1)
+                self.fixConstraintValue(j-1, -1)
+        L, U, P = LU(B)
+        b = np.zeros(self.m)
+        b[0] = 1
+        x = FTran(L, U, P, b)
+        z = np.dot(c, x)
+        # init done
+        for iteration in itertools.count():
+            if iteration > 10000:
+                break
+            print('iteration {}'.format(iteration))
+            L, U, P = LU(B)
+            assert np.allclose(np.dot(L, U), np.dot(P, B))
+            pi = BTran(L, U, P, c)
+            assert np.allclose(np.dot(B.T, pi), c)
+            ans = self.pricing(L, U, P, pi)
+            if ans is None:
+                self.objectiveValue = z
+                print(np.around(x, 2))
+                self.solution = np.around(np.dot(x, codewords), 8)
+                break
+            Aj, cj_bar, cj, codeword = ans
+            Ajbar = FTran(L, U, P, Aj)
+            assert np.allclose(np.dot(B, Ajbar), Aj)
+            delta = np.inf
+            delta_ind = -1
+            for j in range(self.m):
+                if Ajbar[j] > 1e-6:
+                    if x[j] / Ajbar[j] < delta:
+                        delta = x[j] / Ajbar[j]
+                        delta_ind = j
+            assert delta < np.inf
+            x -= delta*Ajbar
+            x[delta_ind] = delta
+            assert np.all(x >= 0)
+            z += delta*cj_bar
+            c[delta_ind] = cj
+            B[:, delta_ind] = Aj
+            codewords[delta_ind] = codeword
+            dual = np.dot(pi, b)
+            print('gap={}'.format(np.abs(z - dual)))
+            assert np.allclose(x, np.dot(np.linalg.inv(B), b))
+            #print('basis exchange in index {}'.format(delta_ind))
+            
+              
+            
+    def pricing(self, L, U, P, pi):
+        g_result = np.zeros(self.k)
+        codeword = np.zeros(self.code.blocklength)
+        c_orig = 0
+        for enc in self.code.encoders:
+            c_orig += shortestPathScalarization(enc.trellis, 1, -pi[1:], g_result, codeword)
+        Aj = np.concatenate( ([1], g_result) )
+        reducedCost = c_orig - np.dot(pi, Aj)
+        #print("reduced cost: {}".format(reducedCost))
+        if reducedCost < -1e-6:
+            return Aj, reducedCost, c_orig, codeword
+        return None
+            
+        
 
 def transpositionMatrix(n, i, j):
     ret = np.eye(n)
@@ -69,13 +158,10 @@ def transpositionMatrix(n, i, j):
 def LU(orig):
     mat = np.array(orig).copy()
     L = np.eye(mat.shape[0])
-    print(L)
     P = np.eye(mat.shape[0])
     for i in range(mat.shape[0]):
-        print('i={}'.format(i))
         pivot = np.argmax(np.abs(mat[i:,i])) + i
         if pivot != i:
-            print('swapping rows {} and {}'.format(pivot, i))
             # swap rows
             tmp = mat[pivot].copy()
             mat[pivot] = mat[i]
@@ -83,20 +169,33 @@ def LU(orig):
             tmp = P[pivot].copy()
             P[pivot] = P[i]
             P[i] = tmp
-            print(mat)
             tmp = L[i,:i].copy()
             L[i,:i] = L[pivot,:i]
             L[pivot,:i] = tmp
         for k in range(i+1,mat.shape[0]):
             factor = -mat[k,i]/mat[i,i]
             L[k,i] = -factor
-            print('factor: {}'.format(factor))
-            print('before: {}'.format(mat[k]))
             mat[k] += factor*mat[i]
-            print('after: {}'.format(mat[k]))
-        print(mat)
-    print(L)
-    print(np.dot(L, mat))
-    print(np.dot(P, orig))
-    return mat
-            
+    return L, mat, P
+
+if __name__ == "__main__":
+    from lpdecoding.codes.interleaver import Interleaver
+    import random
+    random.seed(34)
+    interleaver = Interleaver.random(10)
+    from lpdecoding.codes.convolutional import LTEEncoder
+    from lpdecoding.codes.turbolike import StandardTurboCode
+    from lpdecoding.channels import *
+    from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
+    #code = StandardTurboCode(LTEEncoder(), interleaver, "testcode")
+    code = LTETurboCode(40)
+    channel = AWGNC(coderate=code.rate, snr=1, seed=12981)
+    sig = SignalGenerator(code, channel, randomCodewords=True, wordSeed=247)
+    llr = next(sig)
+    print(llr)
+    decoder = DantzigWolfeTurboDecoder(code)
+    decoder.decode(llr)
+    decoder2 = CplexTurboLikeDecoder(code, ip=False)
+    decoder2.decode(llr)
+    print(decoder2.objectiveValue)
+    print(decoder2.solution)
