@@ -62,15 +62,19 @@ class DantzigWolfeTurboDecoder(Decoder):
             else:
                 bit1 = bit2 = 1
         elif val == 1:
-            bit1 = 1
-            bit2 = 0
+            if np.random.randint(0, 2) == 0:
+                bit1 = 1
+                bit2 = 0
+            else:
+                bit2 = 1
+                bit1 = 0
         else:
             bit1 = bit2 = -1
         setattr(t1[s1], "fix_{}".format(labelStr[b1]), bit1)
         setattr(t2[s2], "fix_{}".format(labelStr[b2]), bit2)
-        
-    def solve(self, hint=None, lb=1):
-        self.code.setCost(self.llrVector)
+
+    
+    def generateStartBasis(self):
         B = np.empty( (self.m, self.m) )
         c = np.zeros(self.m)
         B[0,:] = 1
@@ -86,6 +90,12 @@ class DantzigWolfeTurboDecoder(Decoder):
             B[1:, j] = g_result
             if j > 0:
                 self.fixConstraintValue(j-1, -1)
+        return B, c, codewords 
+    
+    
+    def solve(self, hint=None, lb=1):
+        self.code.setCost(self.llrVector)
+        B, c, codewords = self.generateStartBasis()
         L, U, P = LU(B)
         b = np.zeros(self.m)
         b[0] = 1
@@ -206,7 +216,7 @@ if __name__ == "__main__":
     from lpdecoding.decoders.trellisdecoders import CplexTurboLikeDecoder
     #code = StandardTurboCode(LTEEncoder(), interleaver, "testcode")
     code = LTETurboCode(40)
-    channel = AWGNC(coderate=code.rate, snr=-1, seed=12981)
+    channel = AWGNC(coderate=code.rate, snr=1, seed=121)
     sig = SignalGenerator(code, channel, randomCodewords=True, wordSeed=247)
     llr = next(sig)
     print(llr)
