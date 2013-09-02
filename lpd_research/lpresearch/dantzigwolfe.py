@@ -5,6 +5,7 @@ import itertools
 
 import numpy as np
 
+from collections import OrderedDict
 from lpdecoding import matrix
 from lpdecoding.core import Decoder
 from lpdecoding.codes import trellis
@@ -94,6 +95,7 @@ class DantzigWolfeTurboDecoder(Decoder):
     
     
     def solve(self, hint=None, lb=1):
+        self.sppCount = self.iterationCount = 0
         self.code.setCost(self.llrVector)
         B, c, codewords = self.generateStartBasis()
         L, U, P = LU(B)
@@ -111,7 +113,6 @@ class DantzigWolfeTurboDecoder(Decoder):
                     x[i] = np.random.randint(2,256)
                     if ki[i] > K:
                         K = ki[i]
-            print('iteration {}'.format(iteration))
             L, U, P = LU(B)
             pi = BTran(L, U, P, c)
             ans = self.pricing(L, U, P, pi)
@@ -120,6 +121,8 @@ class DantzigWolfeTurboDecoder(Decoder):
                 for i in np.flatnonzero(ki > 0):
                     x[i] = 0
                 self.solution = np.around(np.dot(x, codewords), 5)
+                self.foundCodeword = self.mlCertificate = np.all(np.mod(self.solution, 1) == 0)
+                self.iterationCount = iteration
                 break
             Aj, cj_bar, cj, codeword = ans
             Ajbar = FTran(L, U, P, Aj)
@@ -148,6 +151,7 @@ class DantzigWolfeTurboDecoder(Decoder):
             #x -= delta*Ajbar
             x[delta_ind] = delta
             if not np.all(x >= 0):
+                print('fuck')
                 print('x', x)
                 return
             if K == 0:
@@ -157,10 +161,17 @@ class DantzigWolfeTurboDecoder(Decoder):
             codewords[delta_ind] = codeword
             #assert np.allclose(x, np.dot(np.linalg.inv(B), b))
             #print('basis exchange in index {}'.format(delta_ind))
+        if "simplexIterations" in self.stats:
+            self.stats["simplexIterations"] += self.iterationCount
+            self.stats["totalSPP"] += self.sppCount
+        else:
+            self.stats["simplexIterations"] = self.iterationCount
+            self.stats["totalSPP"] = self.sppCount
             
               
             
     def pricing(self, L, U, P, pi):
+        self.sppCount += 1
         g_result = np.zeros(self.k)
         codeword = np.zeros(self.code.blocklength)
         c_orig = 0
@@ -172,7 +183,9 @@ class DantzigWolfeTurboDecoder(Decoder):
         if reducedCost < -1e-6:
             return Aj, reducedCost, c_orig, codeword
         return None
-            
+
+    def params(self):
+        return OrderedDict([("name", self.name)])
         
 
 def transpositionMatrix(n, i, j):
