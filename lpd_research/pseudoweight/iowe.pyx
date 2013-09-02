@@ -1,4 +1,7 @@
 #!/usr/bin/python2
+# cython: boundscheck=False
+# cython: nonecheck=False
+# cython: cdivision=True
 # -*- coding: utf-8 -*-
 # Copyright 2013 Michael Helmling
 #
@@ -11,136 +14,263 @@
 
 import numpy as np
 import math
-import itertools
-import collections
-import functools
+import itertools, collections, functools
+import os
+
 cimport numpy as np
-
-class memoized(object):
-    '''Decorator. Caches a function's return value each time it is called.
-    If called later with the same arguments, the cached value is returned
-    (not reevaluated).
-    '''
-    def __init__(self, func):
-        self.func = func
-        self.cache = {}
-    def __call__(self, *args):
-        if args in self.cache:
-            return self.cache[args]
-        else:
-            value = self.func(*args)
-            self.cache[args] = value
-            return value
-    def __repr__(self):
-        '''Return the function's docstring.'''
-        return self.func.__doc__
-    def __get__(self, obj, objtype):
-        '''Support instance methods.'''
-        return functools.partial(self.__call__, obj)
-
-@memoized
-def multinom(K, w1, w2):
-    """Return the log of the multinomial (K over w1,w2)"""
-    return logFac(K) - logFac(w1) - logFac(w2) - logFac(K-w1-w2)
-
-@memoized
-def logFac(k):
-    """Return an approximation of log(k!) by stirlings formula"""
-    if k == 0:
-        return 0
-    return k*math.log(k) + 0.5*math.log(2*math.pi*k)-k
-
-log2 = math.log(2)
-
+cimport cython
+from libc.math cimport log, exp, fmax, fabs, floor
+cdef np.double_t log2 = log(2)
+cdef np.double_t mininf = -np.inf
 
 cdef class IOWE:
     
-    cdef public int length
+    cdef public int length, K
     cdef public np.ndarray itable, ftable
-    cdef public int maxW1, maxW2, maxQ1, maxQ2
     
-    def __init__(self, table):
+    def __init__(self, K, itable, ftable):
         cdef int i, w1, w2, q1, q2
         cdef double logn
-        self.length = len(table)
-        self.itable = np.empty((self.length, 4), dtype=np.int)
-        self.ftable = np.empty(self.length, dtype=np.double)
-        self.maxW1 = 0
-        self.maxW2 = 0
-        self.maxQ1 = 0
-        self.maxQ2 = 0
-        for i, (w1, w2, q1, q2, logn) in enumerate(table):
-            self.itable[i,:] = (w1, w2, q1, q2)
-            self.ftable[i] = logn
-            if w1 > self.maxW1:
-                self.maxW1 = w1
-            if w2 > self.maxW2:
-                self.maxW2 = w2
-            if q1 > self.maxQ1:
-                self.maxQ1 = q1
-            if q2 > self.maxQ2:
-                self.maxQ2 = q2
+        self.length = ftable.size
+        self.itable = itable
+        self.ftable = ftable
+        self.K = K
 
-
-def readIOWE(path):
-    table = []
-    with open(path, "rt") as file:
-        for line in file:
+    @staticmethod
+    def fromFile(path, K):
+        cdef:
+            int i = 0
+            np.ndarray[ndim=2,dtype=np.int_t] itable
+            np.ndarray[ndim=1,dtype=np.double_t] ftable
+        with open(path, "rt") as file:
+            lines = file.readlines()
+        length = len(lines)
+        itable = np.empty((length, 4), dtype=np.int)
+        ftable = np.empty(length, dtype=np.double)
+        
+        for line in lines:
             spl = line.split()
-            w1, w2, q1, q2 = (int(i) for i in spl[:-1])
-            logn = float(spl[-1])
-            table.append( (w1,w2,q1,q2,logn) )
-    return IOWE(table[:13077])    
+            itable[i,0] = int(spl[0])
+            itable[i,1] = int(spl[1])
+            itable[i,2] = int(spl[2])
+            itable[i,3] = int(spl[3])
+            ftable[i] = float(spl[4])
+            i += 1
+        return IOWE(K, itable, ftable)
+    
+    def write(self, path):
+        cdef int i
+        with open(path, 'wt') as outfile:
+            for i in range(self.length):
+                outfile.write("{} {} {} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.itable[i,2], self.itable[i,3], self.ftable[i]))
 
 
-def computeOuterIOWE(IOWE inner):
-    out = collections.OrderedDict()
-    cdef np.int_t currentW1, currentW2, jLow, jHigh, i, j, k, numTotal
-    cdef np.int_t w1, w2, qa1, qa2, qb1, qb2, q1, q2
-    cdef double logn
-    cdef np.int_t[:,:] itableOut
-    cdef np.double_t[:] ftableOut
-    currentW1 = -1
-    currentW2 = -1
-    jLow = jHigh = 0
-    numTotal = 0
-    for i in range(inner.length):
-        w1, w2, qa1, qa2 = inner.itable[i,:]
-        if w2 != currentW2 or w1 != currentW1:
-            currentW1 = w1
-            currentW2 = w2
-            out[(w1,w2)] = outw1w2 = {}
-            print("w1={},w2={}".format(w1, w2))
-            jLow = i
-            try:
-                for j in itertools.count(i):
-                    if inner.itable[j,1] != currentW2 or inner.itable[j,0] != currentW1:
-                        jHigh = j
-                        break
-            except IndexError:
-                jHigh = j
-            print('jLow={}, jHigh={}'.format(jLow, jHigh))
+cdef double logbinom(n, k):
+    cdef double result = 0
+    cdef int i
+    for i in range(n-k+1, n+1):
+        result += log(i)
+    for i in range(1, k+1):
+        result -= log(i)
+    return result
+
+cdef class BinomTable:
+    
+    cdef int minTop, maxTop, minBot, maxBot
+    cdef np.double_t[:,:] values
+    
+    def __init__(self, int minTop, int maxTop, int minBot, int maxBot):
+        cdef int i, j
+        self.minTop = minTop
+        self.maxTop = maxTop
+        self.minBot = minBot
+        self.maxBot = maxBot
+        self.values = np.empty((maxTop-minTop+1, maxBot-minBot+1), dtype=np.double)
+        for i in range(self.minTop, self.maxTop+1):
+            for j in range(self.minBot, self.maxBot+1):
+                self.values[i-self.minTop,j-self.minBot] = logbinom(i,j)
+                
+    cdef double get(self, int top, int bot):
+        if bot > top:
+            print('fuck')
+        return self.values[top-self.minTop, bot-self.minBot]
+        
+
+cdef np.double_t[:] correctionterms = np.empty(100000)
+def initlogplus():
+    cdef int i
+    for i in range(100000):
+        correctionterms[i] = log(1+exp(-i/10000.0))
+
+cdef inline np.double_t logPlus(np.double_t v1, np.double_t v2):
+    cdef double absdiff = fabs(v1-v2)
+    if absdiff < 10:
+        return fmax(v1, v2) + correctionterms[<int>(absdiff*10000)] #log(1 + exp(-fabs(v1-v2)))
+    return fmax(v1, v2)
+
+
+cdef inline np.double_t logtrinom(int K, np.int_t w1, np.int_t w2):
+    cdef:
+        np.double_t res = 0
+        int i
+    for i in range(K-w1-w2+1, K+1):
+        res += log(i)
+    for i in range(1, w1+1):
+        res -= log(i)
+    for i in range(1, w2+1):
+        res -= log(i)
+    return res
+
+cdef class TrinomTable:
+    
+    cdef np.double_t[:,:] values
+    
+    def __init__(self, int top, int maxbot):
+        cdef int i, j
+        self.values = np.empty((maxbot+1, maxbot+1), dtype=np.double)
+        for i in range(0, maxbot+1):
+            for j in range(i, maxbot+1):
+                self.values[i, j] = self.values[j, i] = logtrinom(top, i, j)
+                
+    cdef double get(self, int w1, int w2):
+        return self.values[w1, w2]
+    
+
+@cython.wraparound(False)
+def concatenatedIOWE(IOWE inner, int MAXW=50):
+    cdef:
+        np.ndarray[ndim=2, dtype=np.int_t] out_ind_d = np.empty((0,4), dtype=np.int, order='C')
+        np.ndarray[ndim=1, dtype=np.double_t] out_val_d = np.empty(0, dtype=np.double, order='C')
+        np.int_t[:,:] out_ind
+        np.double_t[:] out_val
+        np.ndarray[ndim=2, dtype=np.int_t] itable = inner.itable
+        np.ndarray[ndim=1, dtype=np.double_t] ftable = inner.ftable
+        np.double_t[:] tmpout = mininf*np.ones((MAXW+1)*(MAXW+1), dtype=np.double)
+        int i = 0, j, qb1, qb2, q1, q2, itableSize = itable.shape[0]
+        int jLow = 0, jHigh = 1, tmpIndex, outSize = 0, numTotal = 0, numTmp = 0
+        int currentW1 = 0, currentW2 = 0, w1 = 0, w2 = 0, qa1 = 0, qa2 = 0
+        np.double_t newVal, oldVal, tmpVal, normalization = 0
+        bint newBlock
+    tmp = os.times()
+    time = tmp[0] + tmp[2]
+    while True:
         for j in range(jLow, jHigh):
-            qb1 = inner.itable[j,2]
-            qb2 = inner.itable[j,3]
+            qb1 = itable[j,2]
+            qb2 = itable[j,3]
             q1 = qa1 + qb1
             q2 = qa2 + qb2
-            if (q1, q2) not in outw1w2:
-                outw1w2[(q1,q2)] = inner.ftable[i] + inner.ftable[j]
-                numTotal += 1
+            if q1 > MAXW or q2 > MAXW:
+                continue
+            newVal = ftable[i] + ftable[j]
+            tmpIndex = (MAXW+1)*q1+q2
+            oldVal = tmpout[tmpIndex]
+            if oldVal == mininf:
+                tmpout[tmpIndex] = newVal
+                numTmp += 1
             else:
-                old = outw1w2[(q1,q2)]
-                outw1w2[(q1,q2)] = max(old, inner.ftable[j]+inner.ftable[i])\
-                     + math.log(1+math.exp(-abs(old-inner.ftable[j]-inner.ftable[i])))
-    itableOut = np.empty((numTotal, 4), dtype=np.int)
-    ftableOut = np.empty(numTotal, dtype=np.double)
-    k = 0
-    for (w1, w2), outw1w2 in out.items():
-        for (q1, q2), logn in sorted(outw1w2.items()):
-            itableOut[k,0] = w1
-            itableOut[k,1] = w2
-            itableOut[k,2] = q1
-            itableOut[k,3] = q2
-            ftableOut[k] = logn #- multinom(100, w1, w2) #- w1*log2 
-            k += 1
-    return itableOut, ftableOut
+                tmpout[tmpIndex] = logPlus(oldVal, newVal)
+        newBlock = False
+        i += 1
+        if i < inner.length:
+            w1 = itable[i,0]
+            w2 = itable[i,1]
+            qa1 = itable[i,2]
+            qa2 = itable[i,3]
+            if w2 != currentW2 or w1 != currentW1:
+                newBlock = True
+        else:
+            newBlock = True
+        if newBlock:
+            if numTmp > 0:
+                # finished a block of common w1/w2 values
+                out_ind_d.resize((outSize+numTmp,4), refcheck=False)
+                out_val_d.resize(outSize+numTmp, refcheck=False)
+                out_ind = out_ind_d
+                out_val = out_val_d
+                tmpIndex = outSize
+                normalization = logtrinom(inner.K, currentW1, currentW2) + currentW1*log2
+                for j in range(tmpout.size):
+                    tmpVal = tmpout[j]
+                    if tmpVal != mininf:
+                        numTmp -= 1
+                        q1 = j // (MAXW+1)
+                        q2 = j % (MAXW+1)
+                        out_ind[tmpIndex,0] = currentW1
+                        out_ind[tmpIndex,1] = currentW2
+                        out_ind[tmpIndex,2] = q1
+                        out_ind[tmpIndex,3] = q2
+                        out_val[tmpIndex] = tmpVal - normalization
+                        tmpIndex += 1
+                        if numTmp == 0:
+                            break
+                outSize = out_ind.shape[0]
+            currentW1 = w1
+            currentW2 = w2
+            if i == inner.length:
+                break
+            for j in range(tmpout.size):
+                tmpout[j] = mininf
+            jLow = i
+            for jHigh in range(i, itable.shape[0]):
+                if itable[jHigh,1] != currentW2 or itable[jHigh,0] != currentW1:
+                    break
+    tmp = os.times()
+    print(tmp[0] + tmp[2] - time)
+    return IOWE(inner.K, out_ind_d, out_val_d)
+
+@cython.wraparound(False)
+cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50):
+    cdef:
+        np.double_t[:] out = mininf*np.ones((MAXW+1)**2, dtype=np.double)
+        np.int_t[:,:] itable_pcc = pcc.itable
+        np.int_t[:,:] itable_inner = inner.itable
+        np.double_t[:] ftable_pcc = pcc.ftable
+        np.double_t[:] ftable_inner = inner.ftable
+        int i, j, index, n_out = 0
+        int K = pcc.K, twoLambdaK = pcc.K//2, twoK = 2*pcc.K
+        int w1, w2, h1, h2, n1, n2, q1, q2, currentN1 = -1, currentN2 = -1
+        double newVal, oldVal, middleterm, middledenom = logbinom(twoK, twoLambdaK)
+        BinomTable t1 = BinomTable(1, MAXW, 1, MAXW)
+        BinomTable t2 = BinomTable(twoK-2*MAXW, twoK, twoLambdaK-2*MAXW, twoLambdaK)
+        TrinomTable tt = TrinomTable(twoLambdaK, MAXW)
+    for i in range(pcc.length):
+        if i % 100 == 0:
+            print(i)
+        w1 = itable_pcc[i,0]
+        w2 = itable_pcc[i,1]
+        q1 = itable_pcc[i,2]
+        q2 = itable_pcc[i,3]
+        for j in range(inner.length):
+            n1 = itable_inner[j,0]
+            n2 = itable_inner[j,1]
+            if n2 != currentN2 or n1 != currentN1:
+                if n1 > q1 or n2 > q2:
+                    continue
+                if n1+n2 > twoLambdaK:
+                    continue
+                currentN1 = n1
+                currentN2 = n2
+                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - middledenom - tt.get(n1, n2) - n1*log2
+            h2 = itable_inner[j,3] + w2 + q2 - n2
+            if h2 < 0 or h2 > MAXW:
+                continue
+            h1 = itable_inner[j,2] + w1 + q1 - n1
+            if h1 < 0 or h1 > MAXW:
+                continue
+            if h1 == 0 and h2 == 1:
+                print(w1, w2, q1, q2, n1, n2, itable_inner[j,2], itable_inner[j,3])
+            index = (MAXW+1)*h1+h2
+            newVal = ftable_pcc[i] + ftable_inner[j] + middleterm
+            oldVal = out[index]
+            if oldVal == mininf:
+                out[index] = newVal
+                n_out += 1 
+            else:
+                out[index] = logPlus(oldVal, newVal)
+    with open(outfile, 'wt') as f:
+        for h1 in range(MAXW+1):
+            for h2 in range(MAXW+1):
+                j = (MAXW+1)*h1 + h2
+                if out[j] != mininf:
+                    f.write('{} {} {:.6f}\n'.format(h1, h2, out[j]))
+        
