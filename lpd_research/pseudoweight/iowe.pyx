@@ -65,7 +65,7 @@ cdef class IOWE:
                 outfile.write("{} {} {} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.itable[i,2], self.itable[i,3], self.ftable[i]))
 
 
-cdef double logbinom(n, k):
+cdef double logbinom(int n, int k):
     cdef double result = 0
     cdef int i
     for i in range(n-k+1, n+1):
@@ -89,23 +89,22 @@ cdef class BinomTable:
         for i in range(self.minTop, self.maxTop+1):
             for j in range(self.minBot, self.maxBot+1):
                 self.values[i-self.minTop,j-self.minBot] = logbinom(i,j)
-                
+    
+    @cython.wraparound(False)
     cdef double get(self, int top, int bot):
-        if bot > top:
-            print('fuck')
         return self.values[top-self.minTop, bot-self.minBot]
         
 
-cdef np.double_t[:] correctionterms = np.empty(100000)
+cdef np.double_t[:] correctionterms = np.empty(2000000)
 def initlogplus():
     cdef int i
-    for i in range(100000):
-        correctionterms[i] = log(1+exp(-i/10000.0))
+    for i in range(2000000):
+        correctionterms[i] = log(1+exp(-i/100000.0))
 
 cdef inline np.double_t logPlus(np.double_t v1, np.double_t v2):
     cdef double absdiff = fabs(v1-v2)
-    if absdiff < 10:
-        return fmax(v1, v2) + correctionterms[<int>(absdiff*10000)] #log(1 + exp(-fabs(v1-v2)))
+    if absdiff < 20:
+        return fmax(v1, v2) + correctionterms[<int>(absdiff*100000)] #log(1 + exp(-fabs(v1-v2)))
     return fmax(v1, v2)
 
 
@@ -132,6 +131,7 @@ cdef class TrinomTable:
             for j in range(i, maxbot+1):
                 self.values[i, j] = self.values[j, i] = logtrinom(top, i, j)
                 
+    @cython.wraparound(False)
     cdef double get(self, int w1, int w2):
         return self.values[w1, w2]
     
@@ -219,7 +219,7 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
     return IOWE(inner.K, out_ind_d, out_val_d)
 
 @cython.wraparound(False)
-cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50):
+cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50, bint codewords=False):
     cdef:
         np.double_t[:] out = mininf*np.ones((MAXW+1)**2, dtype=np.double)
         np.int_t[:,:] itable_pcc = pcc.itable
@@ -230,19 +230,30 @@ cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50):
         int K = pcc.K, twoLambdaK = pcc.K//2, twoK = 2*pcc.K
         int w1, w2, h1, h2, n1, n2, q1, q2, currentN1 = -1, currentN2 = -1
         double newVal, oldVal, middleterm, middledenom = logbinom(twoK, twoLambdaK)
-        BinomTable t1 = BinomTable(1, MAXW, 1, MAXW)
+        BinomTable t1 = BinomTable(0, MAXW, 0, MAXW)
         BinomTable t2 = BinomTable(twoK-2*MAXW, twoK, twoLambdaK-2*MAXW, twoLambdaK)
         TrinomTable tt = TrinomTable(twoLambdaK, MAXW)
+    tmp = os.times()
+    time = tmp[0] + tmp[2]
     for i in range(pcc.length):
-        if i % 100 == 0:
-            print(i)
+        if i % 1000 == 0:
+            print('{:8d}/{}'.format(i, pcc.length))
         w1 = itable_pcc[i,0]
+        if codewords and w1 > 0:
+            continue
         w2 = itable_pcc[i,1]
         q1 = itable_pcc[i,2]
+        if codewords and q1 > 0:
+            continue
         q2 = itable_pcc[i,3]
+        currentN1 = currentN2 = -1
         for j in range(inner.length):
             n1 = itable_inner[j,0]
+            if codewords and n1 > 0:
+                continue
             n2 = itable_inner[j,1]
+            if codewords an n2 > 0:
+                continue
             if n2 != currentN2 or n1 != currentN1:
                 if n1 > q1 or n2 > q2:
                     continue
@@ -250,15 +261,13 @@ cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50):
                     continue
                 currentN1 = n1
                 currentN2 = n2
-                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - middledenom - tt.get(n1, n2) - n1*log2
+                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - tt.get(n1, n2) - n1*log2
             h2 = itable_inner[j,3] + w2 + q2 - n2
             if h2 < 0 or h2 > MAXW:
                 continue
             h1 = itable_inner[j,2] + w1 + q1 - n1
             if h1 < 0 or h1 > MAXW:
                 continue
-            if h1 == 0 and h2 == 1:
-                print(w1, w2, q1, q2, n1, n2, itable_inner[j,2], itable_inner[j,3])
             index = (MAXW+1)*h1+h2
             newVal = ftable_pcc[i] + ftable_inner[j] + middleterm
             oldVal = out[index]
@@ -267,10 +276,51 @@ cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50):
                 n_out += 1 
             else:
                 out[index] = logPlus(oldVal, newVal)
+    tmp = os.times()
+    print('computation time: {}'.format(tmp[0] + tmp[2] - time))
     with open(outfile, 'wt') as f:
+        j = 0
         for h1 in range(MAXW+1):
             for h2 in range(MAXW+1):
-                j = (MAXW+1)*h1 + h2
                 if out[j] != mininf:
-                    f.write('{} {} {:.6f}\n'.format(h1, h2, out[j]))
+                    f.write('{} {} {:.6f}\n'.format(h1, h2, out[j] - middledenom))
+                j += 1
         
+
+def readWE(path):
+    with open(path, 'rt') as infile:
+        lines = infile.readlines()
+    size = len(lines) - 1
+    result = np.empty((size,2), dtype=np.double)
+    for i, line in enumerate(lines[1:]):
+        h1, h2, m = line.strip().split()
+        h1 = int(h1)
+        h2 = int(h2)
+        result[i,0] = (h1 + 2*h2)**2/(h1+4*h2)
+        result[i,1] = float(m)
+    sortindices = np.argsort(result[:,0])
+    return result[sortindices,:]
+
+def makeBins(pseudos):
+    out = []
+    pw = 0
+    enum = mininf
+    for w, m in pseudos:
+        if w != pw:
+            out.append((pw, enum))
+            pw = w
+            enum = m
+        else:
+            enum = logPlus(enum, m)
+    return np.array(out[1:])
+        
+            
+
+def estimate(np.double_t[:,:] array, float threshold):
+    sum = array[0,1]
+    logthresh = log(threshold)
+    i = 1
+    while sum <= logthresh:
+        sum = logPlus(sum, array[i,1])
+        i += 1
+    return array[i-1, 0]
