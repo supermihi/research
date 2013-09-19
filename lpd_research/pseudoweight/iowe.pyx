@@ -16,6 +16,7 @@ import numpy as np
 import math
 import itertools, collections, functools
 import os
+import bz2
 
 cimport numpy as np
 cimport cython
@@ -27,43 +28,66 @@ cdef class IOWE:
     
     cdef public int length, K
     cdef public np.ndarray itable, ftable
+    cdef public bint withInput
     
-    def __init__(self, K, itable, ftable):
-        cdef int i, w1, w2, q1, q2
-        cdef double logn
+    def __init__(self, itable, ftable, K):
         self.length = ftable.size
         self.itable = itable
         self.ftable = ftable
         self.K = K
+        self.withInput = itable.shape[1] == 4
 
     @staticmethod
-    def fromFile(path, K):
+    def fromFile(path, K, codewords=False):
         cdef:
             int i = 0
             np.ndarray[ndim=2,dtype=np.int_t] itable
             np.ndarray[ndim=1,dtype=np.double_t] ftable
-        with open(path, "rt") as file:
-            lines = file.readlines()
-        length = len(lines)
-        itable = np.empty((length, 4), dtype=np.int)
+        thefile = bz2.BZ2File(path, 'r') if path.endswith('bz2') else open(path, 'rt')
+        entries = []
+        input = -1
+        with thefile as file:
+            for line in file:
+                spl = line.split()
+                if input == -1:
+                    input = len(spl) == 5
+                vals = [int(x) for x in spl[:-1]] + [float(spl[-1])]
+                if codewords:
+                    if input and (vals[0] != 0 or vals[2] != 0):
+                        continue
+                    if (not input) and vals[0] != 0:
+                        continue 
+                entries.append(vals)
+        length = len(entries)
+        itable = np.empty((length, 4 if input else 2), dtype=np.int)
         ftable = np.empty(length, dtype=np.double)
         
-        for line in lines:
-            spl = line.split()
-            itable[i,0] = int(spl[0])
-            itable[i,1] = int(spl[1])
-            itable[i,2] = int(spl[2])
-            itable[i,3] = int(spl[3])
-            ftable[i] = float(spl[4])
-            i += 1
-        return IOWE(K, itable, ftable)
+        for i, vals in enumerate(entries):
+            itable[i,:] = vals[:-1]
+            ftable[i] = vals[-1]
+        return IOWE(itable, ftable, K)
     
     def write(self, path):
         cdef int i
-        with open(path, 'wt') as outfile:
+        thefile = bz2.BZ2File(path, 'w') if path.endswith('bz2') else open(path, 'wt')
+        with thefile as outfile:
             for i in range(self.length):
-                outfile.write("{} {} {} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.itable[i,2], self.itable[i,3], self.ftable[i]))
-
+                if self.withInput:
+                    outfile.write("{} {} {} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.itable[i,2], self.itable[i,3], self.ftable[i]))
+                else:
+                    outfile.write("{} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.ftable[i]))
+    
+    
+    def toSortedPseudoweight(self):
+        assert not self.withInput
+        result = np.empty((self.length-1,2), dtype=np.double)
+        for i in range(self.length-1):
+            h1 = self.itable[i+1,0]
+            h2 = self.itable[i+1,1]
+            result[i,0] = (h1 + 2*h2)**2/(h1+4*h2)
+            result[i,1] = self.ftable[i+1]
+        sortindices = np.argsort(result[:,0])
+        return result[sortindices,:]
 
 cdef double logbinom(int n, int k):
     cdef double result = 0
@@ -95,16 +119,16 @@ cdef class BinomTable:
         return self.values[top-self.minTop, bot-self.minBot]
         
 
-cdef np.double_t[:] correctionterms = np.empty(2000000)
+cdef np.double_t[:] correctionterms = np.empty(20000000)
 def initlogplus():
     cdef int i
-    for i in range(2000000):
-        correctionterms[i] = log(1+exp(-i/100000.0))
+    for i in range(20000000):
+        correctionterms[i] = log(1+exp(-i/1000000.0))
 
 cdef inline np.double_t logPlus(np.double_t v1, np.double_t v2):
     cdef double absdiff = fabs(v1-v2)
     if absdiff < 20:
-        return fmax(v1, v2) + correctionterms[<int>(absdiff*100000)] #log(1 + exp(-fabs(v1-v2)))
+        return fmax(v1, v2) + correctionterms[<int>(absdiff*1000000)] #log(1 + exp(-fabs(v1-v2)))
     return fmax(v1, v2)
 
 
@@ -188,7 +212,7 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
                 out_ind = out_ind_d
                 out_val = out_val_d
                 tmpIndex = outSize
-                normalization = logtrinom(inner.K, currentW1, currentW2) + currentW1*log2
+                normalization = logtrinom(inner.K, currentW1, currentW2) #+ currentW1*log2
                 for j in range(tmpout.size):
                     tmpVal = tmpout[j]
                     if tmpVal != mininf:
@@ -216,16 +240,18 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
                     break
     tmp = os.times()
     print(tmp[0] + tmp[2] - time)
-    return IOWE(inner.K, out_ind_d, out_val_d)
+    return IOWE(out_ind_d, out_val_d, inner.K)
 
 @cython.wraparound(False)
-cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50, bint codewords=False):
+cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW=50):
     cdef:
         np.double_t[:] out = mininf*np.ones((MAXW+1)**2, dtype=np.double)
         np.int_t[:,:] itable_pcc = pcc.itable
         np.int_t[:,:] itable_inner = inner.itable
         np.double_t[:] ftable_pcc = pcc.ftable
         np.double_t[:] ftable_inner = inner.ftable
+        np.int_t[:,:] it_out
+        np.double_t[:] ft_out
         int i, j, index, n_out = 0
         int K = pcc.K, twoLambdaK = pcc.K//2, twoK = 2*pcc.K
         int w1, w2, h1, h2, n1, n2, q1, q2, currentN1 = -1, currentN2 = -1
@@ -239,21 +265,14 @@ cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50, bint codewords=Fals
         if i % 1000 == 0:
             print('{:8d}/{}'.format(i, pcc.length))
         w1 = itable_pcc[i,0]
-        if codewords and w1 > 0:
-            continue
+        
         w2 = itable_pcc[i,1]
         q1 = itable_pcc[i,2]
-        if codewords and q1 > 0:
-            continue
         q2 = itable_pcc[i,3]
         currentN1 = currentN2 = -1
         for j in range(inner.length):
             n1 = itable_inner[j,0]
-            if codewords and n1 > 0:
-                continue
             n2 = itable_inner[j,1]
-            if codewords an n2 > 0:
-                continue
             if n2 != currentN2 or n1 != currentN1:
                 if n1 > q1 or n2 > q2:
                     continue
@@ -261,7 +280,7 @@ cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50, bint codewords=Fals
                     continue
                 currentN1 = n1
                 currentN2 = n2
-                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - tt.get(n1, n2) - n1*log2
+                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - tt.get(n1, n2) #- n1*log2
             h2 = itable_inner[j,3] + w2 + q2 - n2
             if h2 < 0 or h2 > MAXW:
                 continue
@@ -278,45 +297,22 @@ cpdef completeWE(IOWE pcc, IOWE inner, outfile, int MAXW=50, bint codewords=Fals
                 out[index] = logPlus(oldVal, newVal)
     tmp = os.times()
     print('computation time: {}'.format(tmp[0] + tmp[2] - time))
-    with open(outfile, 'wt') as f:
-        j = 0
-        for h1 in range(MAXW+1):
-            for h2 in range(MAXW+1):
-                if out[j] != mininf:
-                    f.write('{} {} {:.6f}\n'.format(h1, h2, out[j] - middledenom))
-                j += 1
-        
-
-def readWE(path):
-    with open(path, 'rt') as infile:
-        lines = infile.readlines()
-    size = len(lines) - 1
-    result = np.empty((size,2), dtype=np.double)
-    for i, line in enumerate(lines[1:]):
-        h1, h2, m = line.strip().split()
-        h1 = int(h1)
-        h2 = int(h2)
-        result[i,0] = (h1 + 2*h2)**2/(h1+4*h2)
-        result[i,1] = float(m)
-    sortindices = np.argsort(result[:,0])
-    return result[sortindices,:]
-
-def makeBins(pseudos):
-    out = []
-    pw = 0
-    enum = mininf
-    for w, m in pseudos:
-        if w != pw:
-            out.append((pw, enum))
-            pw = w
-            enum = m
-        else:
-            enum = logPlus(enum, m)
-    return np.array(out[1:])
-        
+    it_out = np.empty((n_out,2), dtype=np.int)
+    ft_out = np.empty(n_out, dtype=np.double)
+    j = 0
+    index = 0
+    for h1 in range(MAXW+1):
+        for h2 in range(MAXW+1):
+            if out[j] != mininf:
+                it_out[index,0] = h1
+                it_out[index,1] = h2
+                ft_out[index] = out[j] - middledenom
+                index += 1
+            j += 1
+    return IOWE(np.asarray(it_out), np.asarray(ft_out), K)
             
 
-def estimate(np.double_t[:,:] array, float threshold):
+def estimateAWGNPseudoweight(np.double_t[:,:] array, float threshold):
     sum = array[0,1]
     logthresh = log(threshold)
     i = 1
@@ -324,3 +320,16 @@ def estimate(np.double_t[:,:] array, float threshold):
         sum = logPlus(sum, array[i,1])
         i += 1
     return array[i-1, 0]
+
+def completeEstimation(path_outer, path_inner, path_outWE, path_results, K):
+    outer = IOWE.fromFile(path_outer, K)
+    pcc = concatenatedIOWE(outer)
+    inner = IOWE.fromFile(path_inner, K)
+    complete = completeWE(pcc, inner)
+    complete.write(path_outWE)
+    pseudo = complete.toSortedPseudoweight()
+    estimation = estimateAWGNPseudoweight(pseudo, .5)
+    print('estimation={}'.format(estimation))
+    with open(path_results, 'at') as f:
+        f.write('{} {} {} {}\n'.format(K, path_outer, path_inner, estimation))
+        
