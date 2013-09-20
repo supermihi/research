@@ -21,16 +21,24 @@ import bz2
 cimport numpy as np
 cimport cython
 from libc.math cimport log, exp, fmax, fabs, floor
+
 cdef np.double_t log2 = log(2)
 cdef np.double_t mininf = -np.inf
 
 cdef class IOWE:
+    """Class for input/output (pseudo)weight enumerators; can also handle output weight only enumerators.
+    """
     
     cdef public int length, K
     cdef public np.ndarray itable, ftable
     cdef public bint withInput
     
     def __init__(self, itable, ftable, K):
+        """Create the IOWE.
+        
+        *itable* is an integer matrix of weights (size either 2xL or 4xL),
+        *ftable* the corresponding log-multiplicities (size L) and K the code length.
+        """
         self.length = ftable.size
         self.itable = itable
         self.ftable = ftable
@@ -39,6 +47,7 @@ cdef class IOWE:
 
     @staticmethod
     def fromFile(path, K, codewords=False):
+        """Read the IOWE from a file. Can be bzip2'ed."""
         cdef:
             int i = 0
             np.ndarray[ndim=2,dtype=np.int_t] itable
@@ -68,17 +77,25 @@ cdef class IOWE:
         return IOWE(itable, ftable, K)
     
     def write(self, path):
+        """Write IOWE to a file in *path*. If *path* ends on bz2, it is compressed."""
         cdef int i
         thefile = bz2.BZ2File(path, 'w') if path.endswith('bz2') else open(path, 'wt')
         with thefile as outfile:
             for i in range(self.length):
                 if self.withInput:
-                    outfile.write("{} {} {} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.itable[i,2], self.itable[i,3], self.ftable[i]))
+                    outfile.write("{} {} {} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1],
+                                                                self.itable[i,2], self.itable[i,3], self.ftable[i]))
                 else:
                     outfile.write("{} {} {:.6f}\n".format(self.itable[i,0], self.itable[i,1], self.ftable[i]))
     
     
     def toSortedPseudoweight(self):
+        """Computes the AWGN pseudoweight of each entry and returns an array with rows
+        
+        w m
+        
+        where w is the pseudoweight an m the log-multiplicity, ordered by pseudoweight ascending.
+        """
         assert not self.withInput
         result = np.empty((self.length-1,2), dtype=np.double)
         for i in range(self.length-1):
@@ -89,7 +106,9 @@ cdef class IOWE:
         sortindices = np.argsort(result[:,0])
         return result[sortindices,:]
 
+
 cdef double logbinom(int n, int k):
+    """Compute the log of (n choose k)."""
     cdef double result = 0
     cdef int i
     for i in range(n-k+1, n+1):
@@ -98,8 +117,9 @@ cdef double logbinom(int n, int k):
         result -= log(i)
     return result
 
+
 cdef class BinomTable:
-    
+    """Class for precomputed tables of log-binomial values."""
     cdef int minTop, maxTop, minBot, maxBot
     cdef np.double_t[:,:] values
     
@@ -120,10 +140,11 @@ cdef class BinomTable:
         
 
 cdef np.double_t[:] correctionterms = np.empty(20000000)
-def initlogplus():
+def _initlogplus():
     cdef int i
     for i in range(20000000):
         correctionterms[i] = log(1+exp(-i/1000000.0))
+_initlogplus()
 
 cdef inline np.double_t logPlus(np.double_t v1, np.double_t v2):
     cdef double absdiff = fabs(v1-v2)
