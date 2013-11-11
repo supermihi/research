@@ -69,7 +69,7 @@ cdef class BranchAndBound:
                         self.selectionMethod.FirstSolutionExists = True
                         self.selectionMethod.refreshActiveNodes(activeNew)
                     #we have a new optimal value and solution
-                    self.optimalSolution = self.root.solution
+                    self.optimalSolution = self.root.solution.copy()
                     self.optimalObjectiveValue = self.root.objectiveValue
                     
                 #create new children or close branch
@@ -103,8 +103,8 @@ cdef class BranchAndBound:
         self.lpTime = self.selectionMethod.lpTime
         self.moveTime = self.selectionMethod.moveTime 
         #to measure the time used for solving lps / functions in percent
-        print(self.time)
-        print(self.lpTime)
+        print('bnb time: {}'.format(self.time))
+        print('bnb LP time: {}'.format(self.lpTime))
         self.lpVsAll = self.lpTime / self.time if self.time > 0 else 0
         self.boundVsAll = self.boundTime / self.time if self.time > 0 else 0
         self.refreshVsAll = self.refreshTime / self.time if self.time > 0 else 0

@@ -902,7 +902,7 @@ cdef class DSTMethod(SelectionMethod):
         with stopwatch() as timer:
             self.problem.solve()
         self.lpTime += timer.duration
-        self.root.solution = self.problem.solution
+        self.root.solution = self.problem.solution.copy()
         self.root.objectiveValue = self.problem.objectiveValue
         self.root.lowerb = self.root.objectiveValue
         if self.root.solution is not None:
@@ -958,7 +958,7 @@ cdef class DSTMethod(SelectionMethod):
                 parent.child0.upperb = parent.child0.objectiveValue
                 if self.root.objectiveValue > parent.child0.upperb or not self.FirstSolutionExists:
                     self.root.objectiveValue = parent.child0.upperb
-                    self.root.solution = parent.child0.solution
+                    self.root.solution = parent.child0.solution.copy()
             else:
                 if self.problem.hSolution is not None:
                     parent.child0.upperb = self.problem.hObjectiveValue 
@@ -972,9 +972,9 @@ cdef class DSTMethod(SelectionMethod):
         with stopwatch() as timer:
             if self.problem.solve(parent.lowerb, parent.upperb) == -2:
                 parent.child1.upperb = self.problem.objectiveValue
-                parent.child1.solution = parent.solution
+                parent.child1.solution = parent.solution.copy()
             else:
-                parent.child1.solution = self.problem.solution
+                parent.child1.solution = self.problem.solution.copy()
         self.lpTime += timer.duration
         parent.child1.lowerb = parent.child1.objectiveValue = self.problem.objectiveValue
         if parent.child1.solution is not None:
@@ -984,7 +984,7 @@ cdef class DSTMethod(SelectionMethod):
                 parent.child1.upperb = parent.child1.objectiveValue
                 if self.root.objectiveValue > parent.child1.upperb or not self.FirstSolutionExists:
                     self.root.objectiveValue = parent.child1.upperb
-                    self.root.solution = parent.child1.solution
+                    self.root.solution = parent.child1.solution.copy()
             else:
                 if self.problem.hSolution is not None:
                     parent.child1.upperb = self.problem.hObjectiveValue 
