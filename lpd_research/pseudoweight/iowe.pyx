@@ -8,8 +8,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
-
+from __future__ import division
 """Methods for computing pseudoweight IOWEs for 3-D turbo codes."""
 
 import numpy as np
@@ -301,7 +300,7 @@ cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW=50):
                     continue
                 currentN1 = n1
                 currentN2 = n2
-                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - tt.get(n1, n2) #- n1*log2
+                middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - tt.get(n1, n2)
             h2 = itable_inner[j,3] + w2 + q2 - n2
             if h2 < 0 or h2 > MAXW:
                 continue
@@ -340,7 +339,15 @@ def estimateAWGNPseudoweight(np.double_t[:,:] array, float threshold):
     while sum <= logthresh:
         sum = logPlus(sum, array[i,1])
         i += 1
-    return array[i-1, 0]
+    i -= 1
+    hbar = array[i, 0]
+    print('hbar = {} at index {}'.format(hbar, i))
+    while array[i, 0] == hbar:
+        i -= 1
+    previous = array[i, 0]
+    print('previous = {} at index {}'.format(previous, i))
+    return hbar
+
 
 def completeEstimation(path_outer, path_inner, path_outWE, path_results, K):
     outer = IOWE.fromFile(path_outer, K)
