@@ -132,7 +132,15 @@ cdef class CSPDecoder(Decoder):
             self.paths = np.empty( (self.k+2, self.numEncoders, maxTrellisLength), dtype=np.int)
         self.direction = np.empty(self.k+1)
         self.timer = StopWatch()
-        
+    
+    cpdef setStats(self, dict stats):
+        for item in ("immediateSolutions", "NaNs", "lstsq_time", "sp_time",
+                     "cho_time", "r_time", "setcost_time", "vertexSolutions",
+                     "faceDimension", "mainIterations", "majorCycles", "totalSPP"):
+            if item not in stats:
+                stats[item] = 0
+        Decoder.setStats(self, stats)
+    
     cpdef solve(self, np.int_t[:] hint=None, double lb=1):
         """Solve the LP problem by a number of nearest point problems in constraints space.
         """
@@ -175,10 +183,7 @@ cdef class CSPDecoder(Decoder):
             self.hSolution = self.solution
             self.objectiveValue = self.hObjectiveValue = X[self.k]
             self.mlCertificate = self.foundCodeword = True
-            try:
-                self.stats["immediateSolutions"] += 1
-            except KeyError:
-                self.stats["immediateSolutions"] = 1
+            self._stats["immediateSolutions"] += 1
         else:
             self.resetData(X, X[self.k] if lb == 1 or 0.1*lb < X[self.k] else 0.1*lb)
             while self.maxMajorCycles == 0 or self.majorCycles < self.maxMajorCycles:
@@ -200,10 +205,7 @@ cdef class CSPDecoder(Decoder):
                 
                 ret = self.NearestPointAlgorithm()
                 if ret == -1:
-                    try:
-                        self.stats["NaNs"] += 1
-                    except KeyError:
-                        self.stats["NaNs"] = 1
+                    self._stats["NaNs"] += 1
                     print(self.objectiveValue)
                     print('NAN')
                     break
@@ -255,37 +257,19 @@ cdef class CSPDecoder(Decoder):
         self.objectiveValue *= 10
         self.hObjectiveValue *= 10
         if self.measureTimes:
-            if "sp_time" not in self.stats:
-                self.stats["lstsq_time"] = self.stats["sp_time"] = 0
-                self.stats["cho_time"] = self.stats["r_time"] = self.stats["setcost_time"] = 0
-            self.stats["lstsq_time"] += self.lstsq_time
-            self.stats["sp_time"] += self.sp_time
-            self.stats["cho_time"] += self.cho_time
-            self.stats["r_time"] += self.r_time
-            self.stats["setcost_time"] += self.setcost_time
+            self._stats["lstsq_time"] += self.lstsq_time
+            self._stats["sp_time"] += self.sp_time
+            self._stats["cho_time"] += self.cho_time
+            self._stats["r_time"] += self.r_time
+            self._stats["setcost_time"] += self.setcost_time
         
         if self.lenS == 1:
-            try:
-                self.stats["vertexSolutions"] += 1
-            except KeyError:
-                self.stats["vertexSolutions"] = 1
+            self._stats["vertexSolutions"] += 1
         else:
-            try:
-                self.stats["faceDimension"] += self.lenS -1
-            except KeyError:
-                self.stats["faceDimension"] = self.lenS
-        try:
-            self.stats["mainIterations"] += mainIterations
-        except KeyError:
-            self.stats["mainIterations"] = mainIterations
-        try:
-            self.stats["majorCycles"] += self.majorCycles
-        except KeyError:
-            self.stats["majorCycles"] = self.majorCycles
-        try:
-            self.stats["totalSPP"] += self.totalSPP
-        except KeyError:
-            self.stats["totalSPP"] = self.totalSPP
+            self._stats["faceDimension"] += self.lenS -1
+        self._stats["mainIterations"] += mainIterations
+        self._stats["majorCycles"] += self.majorCycles
+        self._stats["totalSPP"] += self.totalSPP
     
     cdef int NearestPointAlgorithm(self):
         """The algorithm described in "Finding the Nearest Point in a Polytope" by P. Wolfe,

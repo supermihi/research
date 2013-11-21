@@ -6,18 +6,19 @@
 # published by the Free Software Foundation
 
 from branchbound.problem import Problem
-from lpdecoding.decoders.siegeldecoders import ZhangSeparationDecoder
-from lpdecoding.decoders.iterative import SumProductDecoder
+from lpdecoding.decoders.zhangsiegel import ZhangSiegelACG
+from lpdecoding.decoders.iterative import IterativeDecoder
 
 import numpy as np
 
+
 class LDPCLPProblem(Problem):
     
-    def __init__(self, code, pureLP=False):
+    def __init__(self, code, **kwargs):
         Problem.__init__(self)
-        self.decoder = ZhangSeparationDecoder(code, pureLP=pureLP)
+        self.decoder = ZhangSiegelACG(code, **kwargs)
         self.code = code
-        self.iterDecoder = SumProductDecoder(code, maxIterations=200)
+        self.iterDecoder = IterativeDecoder(code, minSum=False, maxIterations=1000)
         
     def setObjectiveFunction(self, c):
         self.decoder.llrVector = c
@@ -26,7 +27,6 @@ class LDPCLPProblem(Problem):
         
     def solve(self, lb=1, ub=0):        
         self.decoder.solve(hint=None, lb=lb)
-        self.decoder.fix()
         self.objectiveValue = self.decoder.objectiveValue
         if self.objectiveValue == np.inf:
             self.solution = None
@@ -46,11 +46,9 @@ class LDPCLPProblem(Problem):
         return 0 
         
     def fixVariable(self, var, value):
-        #print('fix {} {}'.format(var, value))
-        self.decoder.fixes[var] = value
+        self.decoder.fix(var, value)
         self.iterDecoder.fix(var, value)
         
     def unfixVariable(self, var):
-        #print('unfix {}'.format(var))
-        self.decoder.fixes[var] = -1
-        self.iterDecoder.unfix(var)
+        self.decoder.release(var)
+        self.iterDecoder.release(var)

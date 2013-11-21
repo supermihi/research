@@ -7,45 +7,22 @@
 
 import logging
 import itertools
+from collections import OrderedDict
 
 import numpy as np
 
 from lpdecoding.core import Decoder
+from lpdecoding.decoders.zhangsiegel import ZhangSiegelACG
+from lpdecoding.decoders.iterative import IterativeDecoder
+from lpdecoding.utils import StopWatch
 
 logger = logging.getLogger(name="bb2")
 
-class Node:
-    nodeCount = 0
-    
-    def __init__(self, **kwargs):
-        self.parent = kwargs.get("parent", None)
-        self.branchIndex = kwargs.get("branchIndex", None)
-        self.branchValue = kwargs.get("branchValue", None)
-        self.lb = -np.inf
-        if self.parent is not None:
-            self.depth = self.parent.depth + 1
-        else:
-            self.depth = 0
-        self.lbChild = [-np.inf, -np.inf]
-        Node.nodeCount += 1
-        
-    def updateBound(self, lbChild, childValue):
-        if lbChild > self.lbChild[childValue]:
-            self.lbChild[childValue] = lbChild
-        newLb = min(self.lbChild)
-        if newLb > self.lb:
-            self.lb = newLb
-            if self.parent is not None:
-                self.parent.updateBound(newLb, self.branchValue)
-
-    def __del__(self):
-        Node.nodeCount -= 1
-
-
-def move(problem, node, newNode):
+def move(lbProv, ubProv, node, newNode):
     fix = []
     while node.depth > newNode.depth:
-        problem.unfixVariable(node.branchIndex)
+        lbProv.release(node.branchIndex)
+        ubProv.release(node.branchIndex)
         node = node.parent
     
     while newNode.depth > node.depth:
@@ -53,45 +30,106 @@ def move(problem, node, newNode):
         newNode = newNode.parent
         
     while node is not newNode:
-        problem.unfixVariable(node.branchIndex)
+        lbProv.release(node.branchIndex)
+        ubProv.release(node.branchIndex)
         fix.append( (newNode.branchIndex, newNode.branchValue) )
         node = node.parent
         newNode = newNode.parent
     for var, value in fix:
-        problem.fixVariable(var, value)
+        lbProv.fix(var, value)
+        ubProv.fix(var, value)
+
 
 class BranchAndBoundLDPCDecoder(Decoder):
     
-    def __init__(self, code, branchMethod="mostFractional", pureLP=False, method="dfs", name="BBDecoder"):
-        self.code = code
+    def __init__(self, code, branchMethod="mostFractional", selectionMethod="dfs", acgDepth=-1, name="BBDecoder",
+                 lpParams=None, iterParams=None):
+        
         self.name = name
-        import bbldpc
-        self.problem = bbldpc.LDPCLPProblem(code, pureLP)
+        if lpParams is None:
+            lpParams = {}
+        if iterParams is None:
+            iterParams = dict(minSum=False, maxIterations=1000)
+        self.lbProvider = ZhangSiegelACG(code, **lpParams)
+        self.ubProvider = IterativeDecoder(code, **iterParams)
         self.branchMethod = branchMethod
-        self.method = method
+        self.acgDepth = acgDepth
+        self.selectionMethod = selectionMethod
+        self.timer = StopWatch()
+        Decoder.__init__(self, code)
+
+    
+    def setStats(self, stats):
+        for item in "lpTime", "heuristicTime":
+            if item not in stats:
+                stats[item] = 0.0
+        if "nodes" not in stats:
+            stats["nodes"] = 0
+        if "lpStats" in stats:
+            self.lbProvider.setStats(stats["lpStats"])
+            del stats["lpStats"]
+        else:
+            self.lbProvider.setStats(dict())
+        if "iterStats" in stats:
+            self.ubProvider.setStats(stats["iterStats"])
+            del stats["iterStats"]
+        else:
+            self.ubProvider.setStats(dict())
+        Decoder.setStats(self, stats)
+    
+
+    def stats(self):
+        stats = self._stats.copy()
+        stats["lpStats"] = self.lbProvider.stats().copy()
+        stats["iterStats"] = self.ubProvider.stats().copy()
+        return stats
 
     def branchIndex(self):
         if self.branchMethod == "mostFractional":
-            index = np.argmin(np.abs(self.problem.solution-0.5))
-            if self.problem.solution[index] < 1e-10 or self.problem.solution[index] > 1-1e-10:
+            index = np.argmin(np.abs(self.lbProvider.solution-0.5))
+            if self.lbProvider.solution[index] < 1e-6 or self.lbProvider.solution[index] > 1-1e-6:
                 return -1
             return index
         elif self.branchMethod == "leastReliable":
-            for i in np.argsort(np.abs(self.llrVector)):
-                if np.abs(.5-self.problem.solution[i]) < .499:
+            for i in np.argsort(np.abs(self.llrs)):
+                if np.abs(.5-self.lbProvider.solution[i]) < .499:
                     return i
-            return -1 
-            
+            return -1
+        elif self.branchMethod == "eiriksPaper":
+            matrix = self.code.parityCheckMatrix
+            degrees = np.zeros(matrix.shape[1], dtype=np.int)
+            for i in range(matrix.shape[0]):
+                for j in range(matrix.shape[1]):
+                    if matrix[i,j] == 1 and self.lbProvider.solution[j] > 1e-6 and self.lbProvider.solution[j] < 1-1e-6:
+                        degrees[i] += 1
+            maxDegree = 0 #matrix.shape[1]
+            maxDegreeIndex = -1
+            for i in range(matrix.shape[0]):
+                if degrees[i] >= 1 and degrees[i] > maxDegree:
+                    maxDegree = degrees[i]
+                    maxDegreeIndex = i
+            assert maxDegreeIndex != -1
+            for j in range(matrix.shape[1]):
+                if matrix[maxDegreeIndex,j] == 1 and self.lbProvider.solution[j] > 1e-6 and self.lbProvider.solution[j] < 1-1e-6:
+                    return j
+        raise ValueError()
+    
+    def setLLRs(self, llrs):
+        self.lbProvider.setLLRs(llrs)
+        self.ubProvider.setLLRs(llrs)
+        Decoder.setLLRs(self, llrs)
+    
     def solve(self, hint=None, lb=1):
-        self.problem.setObjectiveFunction(self.llrVector)
-        self.problem.unfixVariables(range(self.code.blocklength))
-        node = Node()
+        from .node import Node
+        for i in range(self.code.blocklength):
+            self.lbProvider.release(i)
+            self.ubProvider.release(i)
+        node = Node() # root node
         activeNodes = []
         candidate = None
         ub = np.inf
-    
-        for i in itertools.count():
-            logger.info("iteration {:3d}, active nodes: {}".format(i, len(activeNodes)))
+        self._stats["nodes"] += 1
+        while True:
             if node.lb >= ub:
                 # prune by bound
                 logger.info("node pruned by bound 1")
@@ -99,57 +137,64 @@ class BranchAndBoundLDPCDecoder(Decoder):
                     node.parent.updateBound(node.lb, node.branchValue)
             else:
                 # solve
-                ans = self.problem.solve()
-                node.lb = self.problem.objectiveValue
+                self.timer.start()
+                if self.acgDepth != -1 and node.depth % self.acgDepth == 0:
+                    self.lbProvider.pureLP = False
+                    self.lbProvider.solve()
+                    self.lbProvider.pureLP = True
+                else:
+                    self.lbProvider.solve()
+                self._stats["lpTime"] += self.timer.stop()
+                node.lb = self.lbProvider.objectiveValue
                 if node.parent is not None:
                     node.parent.updateBound(node.lb, node.branchValue)
-                if ans == 1:
+                if node.lb == np.inf:
+                    logger.info("node pruned by infeasibility")
+                elif self.lbProvider.foundCodeword:
                     # solution is integral
                     logger.info("node pruned by integrality")
-                    if self.problem.objectiveValue < ub:
-                        candidate = self.problem.solution.copy()
-                        ub = self.problem.objectiveValue
+                    if self.lbProvider.objectiveValue < ub:
+                        candidate = self.lbProvider.solution.copy()
+                        ub = self.lbProvider.objectiveValue
                         logger.info("ub improved to {}".format(ub))
-                elif ans == -1:
-                    logger.info("node pruned by infeasibility")
-                elif ans == 0:
-                    if node.lb < ub:
+                else:
+                    if node.lb < ub-1e-6:
                         # branch
                         branchIndex = self.branchIndex()
                         activeNodes.append(Node(parent=node, branchIndex=branchIndex, branchValue=0))
                         activeNodes.append(Node(parent=node, branchIndex=branchIndex, branchValue=1))
+                        self._stats["nodes"] += 2
+                        parent = node.parent
+                        while parent is not None:
+                            assert parent.branchIndex != branchIndex, "baaa {} {}".format(branchIndex, self.lbProvider.solution[branchIndex])
+                            parent = parent.parent
                     else:
                         logger.info("node pruned by bound 2")
-                ans = self.problem.solveHeuristic()
-                if ans == 1:
-                    if self.problem.hObjectiveValue < ub:
-                        print('heuristic improved ub')
-                        candidate = self.problem.hSolution.copy()
-                        ub = self.problem.hObjectiveValue
-            
+                self.timer.start()
+                self.ubProvider.solve()
+                self._stats["heuristicTime"] += self.timer.stop()
+                if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
+                    candidate = self.ubProvider.solution.copy()
+                    ub = self.ubProvider.objectiveValue
             if len(activeNodes) == 0:
                 break
-            if self.method == "dfs":
+            if self.selectionMethod == "dfs":
                 newNode = activeNodes.pop()
-            elif self.method == "bbs":
+            elif self.selectionMethod == "bbs":
                 newNode = min(activeNodes, key=lambda n: -n.lb)
                 activeNodes.remove(newNode)
-            elif self.method == "wbs":
-                newNode = min(activeNodes, key=lambda n: n.lb)
-            elif self.method == "bfs":
+            elif self.selectionMethod == "bfs":
                 newNode = activeNodes.pop(0)
             else:
-                raise ValueError("wrong method")
-            move(self.problem, node, newNode)
+                raise ValueError("wrong selectionMethod")
+            move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
         self.solution = candidate
         self.objectiveValue = ub
-        if "nodes" not in self.stats:
-            self.stats["nodes"] = 0
-        self.stats["nodes"] += i
         
     def params(self):
-        return dict() #todo
+        return OrderedDict(name=self.name, branchMethod=self.branchMethod, method=self.selectionMethod, acgDepth=self.acgDepth,
+                           lpParams=self.lbProvider.params(), iterParams=self.ubProvider.params())
             
         
             
