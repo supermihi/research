@@ -4,7 +4,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
+from __future__ import print_function
 cimport numpy as np
 import numpy as np
 from libc.math cimport fmin
@@ -20,13 +20,16 @@ cdef class Node:
             self.depth = self.parent.depth + 1
         else:
             self.depth = 0
-        self.lbChild = [-inf, -inf]
+        self.lbChild0 = self.lbChild1 = -inf
         
     cpdef updateBound(self, double lbChild, int childValue):
-        cdef double newLb
-        if lbChild > self.lbChild[childValue]:
-            self.lbChild[childValue] = lbChild
-        newLb = fmin(self.lbChild[0], self.lbChild[1])
+        cdef double newLb, oldChild = self.lbChild0 if childValue == 0 else self.lbChild1
+        if lbChild > oldChild:
+            if childValue == 0:
+                self.lbChild0 = lbChild
+            else:
+                self.lbChild1 = lbChild
+        newLb = fmin(self.lbChild0, self.lbChild1)
         if newLb > self.lb:
             self.lb = newLb
             if self.parent is not None:

@@ -133,7 +133,7 @@ cdef class CSPDecoder(Decoder):
         self.direction = np.empty(self.k+1)
         self.timer = StopWatch()
     
-    cpdef setStats(self, dict stats):
+    cpdef setStats(self, object stats):
         for item in ("immediateSolutions", "NaNs", "lstsq_time", "sp_time",
                      "cho_time", "r_time", "setcost_time", "vertexSolutions",
                      "faceDimension", "mainIterations", "majorCycles", "totalSPP"):
@@ -147,7 +147,7 @@ cdef class CSPDecoder(Decoder):
         
         cdef:
             double old_ref = 0, ref = 0, b_r, norm_a_r, delta_r, result
-            int ret, k, mainIterations = 0
+            int ret, i, k, mainIterations = 0
             np.double_t[:] direction = self.direction, X = self.X
             np.double_t[:,:] codewords = self.codewords
             np.int_t[:,:,:] paths = self.paths           

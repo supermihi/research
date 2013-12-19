@@ -11,6 +11,6 @@ cdef class Node:
     cdef public double lb
     cdef public Node   parent
     cdef public int    depth
-    cdef double *lbChild
+    cdef double lbChild0, lbChild1
     
     cpdef updateBound(self, double lbChild, int childValue)
