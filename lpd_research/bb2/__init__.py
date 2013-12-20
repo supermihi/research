@@ -49,6 +49,7 @@ class BranchAndBoundLDPCDecoder(Decoder):
                  ubDepth=1,
                  childOrder="01",
                  glpk=False,
+                 allZero=False,
                  name="BBDecoder", lpParams=None, iterParams=None):
         
         self.name = name
@@ -59,14 +60,14 @@ class BranchAndBoundLDPCDecoder(Decoder):
         DecoderClass = ZhangSiegelACGGLPK if glpk else ZhangSiegelACGC
         self.lbProvider = DecoderClass(code, **lpParams) 
         self.ubProvider = IterativeDecoder(code, **iterParams)
-        self.glpk=glpk
+        self.glpk = glpk
+        self.allZero = allZero
         self.branchMethod = branchMethod
         self.acgDepth = acgDepth
         self.ubDepth = ubDepth
         self.childOrder = childOrder
         self.selectionMethod = selectionMethod
         self.timer = StopWatch()
-        self.foundCodeword = self.mlCertificate = True
         Decoder.__init__(self, code)
 
     
@@ -135,6 +136,7 @@ class BranchAndBoundLDPCDecoder(Decoder):
         for i in range(self.code.blocklength):
             self.lbProvider.release(i)
             self.ubProvider.release(i)
+        self.foundCodeword = self.mlCertificate = True
         node = Node() # root node
         root = node
         activeNodes = []
@@ -157,6 +159,9 @@ class BranchAndBoundLDPCDecoder(Decoder):
                 if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                     candidate = self.ubProvider.solution.copy()
                     ub = self.ubProvider.objectiveValue
+                    if self.allZero and ub < 0:
+                        self.mlCertificate = False
+                        break
             if node.depth > maxDepth:
                 maxDepth = node.depth
             if node.lb >= ub - 1e-6:
@@ -202,6 +207,9 @@ class BranchAndBoundLDPCDecoder(Decoder):
                         ub = self.lbProvider.objectiveValue
                         logger.info("ub improved to {}".format(ub))
                         self._stats["prOpt"] += 1
+                        if self.allZero and ub < 0:
+                            self.mlCertificate = False
+                            break
                 else:
                     if node.lb < ub-1e-6:
                         # branch
@@ -250,6 +258,8 @@ class BranchAndBoundLDPCDecoder(Decoder):
                  ("iterParams", self.ubProvider.params())]
         if self.glpk:
             parms.insert(2, ("glpk", True))
+        if self.allZero:
+            parms.insert(1, ("allZero", True))
         return OrderedDict(parms)
 
         
