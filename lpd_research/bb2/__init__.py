@@ -50,6 +50,7 @@ class BranchAndBoundLDPCDecoder(Decoder):
                  childOrder="01",
                  glpk=False,
                  allZero=False,
+                 minimumDistance=False,
                  name="BBDecoder", lpParams=None, iterParams=None):
         
         self.name = name
@@ -57,6 +58,9 @@ class BranchAndBoundLDPCDecoder(Decoder):
             lpParams = {}
         if iterParams is None:
             iterParams = dict(minSum=False, maxIterations=1000)
+        if minimumDistance:
+            lpParams["minimumDistance"] = True
+        self.minDistance = minimumDistance
         DecoderClass = ZhangSiegelACGGLPK if glpk else ZhangSiegelACGC
         self.lbProvider = DecoderClass(code, **lpParams) 
         self.ubProvider = IterativeDecoder(code, **iterParams)
@@ -247,6 +251,12 @@ class BranchAndBoundLDPCDecoder(Decoder):
         self.solution = candidate
         self.objectiveValue = ub
         
+    def minimumDistance(self):
+        assert self.minDistance
+        self.setLLR(np.ones(self.code.blocklength, dtype=np.double))
+        self.solve()
+        return self.objectiveValue
+        
     def params(self):
         parms = [("name", self.name),
                  ("branchMethod", self.branchMethod),
@@ -260,6 +270,8 @@ class BranchAndBoundLDPCDecoder(Decoder):
             parms.insert(2, ("glpk", True))
         if self.allZero:
             parms.insert(1, ("allZero", True))
+        if self.minDistance:
+            parms.insert(1, ("minimumDistance", True) )
         return OrderedDict(parms)
 
         
