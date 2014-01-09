@@ -31,7 +31,6 @@ def move(lbProv, ubProv, node, newNode):
     while newNode.depth > node.depth:
         fix.append( (newNode.branchIndex, newNode.branchValue) )
         newNode = newNode.parent
-        
     while node is not newNode:
         lbProv.release(node.branchIndex)
         ubProv.release(node.branchIndex)
@@ -59,7 +58,8 @@ class BranchAndBoundLDPCDecoder(Decoder):
         if iterParams is None:
             iterParams = dict(minSum=False, maxIterations=1000)
         if minimumDistance:
-            lpParams["minimumDistance"] = True
+            #lpParams["minimumDistance"] = True
+            iterParams["minimumDistance"] = True
         self.minDistance = minimumDistance
         DecoderClass = ZhangSiegelACGGLPK if glpk else ZhangSiegelACGC
         self.lbProvider = DecoderClass(code, **lpParams) 
@@ -126,13 +126,20 @@ class BranchAndBoundLDPCDecoder(Decoder):
                         if degrees[i] > 0:
                             cdegrees[degrees[i]-1] += 1
                     candidates.append( (cdegrees, j) )
+            if len(candidates) == 0:
+                return -1
             degrees, j = max(candidates)
             return j
         raise ValueError()
     
     def setLLRs(self, llrs):
-        self.lbProvider.setLLRs(llrs)
         self.ubProvider.setLLRs(llrs)
+        self.timer.start()
+        self.ubProvider.solve()
+        self._stats["heuristicTime"] += self.timer.stop()
+        if self.ubProvider.foundCodeword:
+            self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
+        self.lbProvider.setLLRs(llrs)
         Decoder.setLLRs(self, llrs)
     
     def solve(self, hint=None, lb=1):
@@ -141,120 +148,211 @@ class BranchAndBoundLDPCDecoder(Decoder):
             self.lbProvider.release(i)
             self.ubProvider.release(i)
         self.foundCodeword = self.mlCertificate = True
-        node = Node() # root node
-        root = node
+        root = node = Node() # root node
         activeNodes = []
         candidate = None
         ub = np.inf
-        maxDepth = 0
         self._stats["nodes"] += 1
         for i in itertools.count(start=1):
+            
+            # statistic collection and debug output
             depthStr = str(node.depth)
             if i > 1 and i % 10 == 0:
-                logger.info('gap {}/{}, d {}, n {}, c {}, iteration {}'.format(root.lb, ub, node.depth, len(activeNodes), self.lbProvider.numConstrs, i))
-            #print('gap {}/{}, d {}, n {}, iteration {}'.format(root.lb, ub, node.depth, len(activeNodes), i))
+                logger.info('{}/{}, d {}, n {}, c {}, it {}'.format(root.lb, ub, node.depth, len(activeNodes), self.lbProvider.numConstrs, i))
             if depthStr not in self._stats["nodesPerDepth"]:
                 self._stats["nodesPerDepth"][depthStr] = 0
             self._stats["nodesPerDepth"][depthStr] += 1
+            
+            # upper bound calculation
             if node.depth % self.ubDepth == 0:
-                self.timer.start()
-                self.ubProvider.solve()
-                self._stats["heuristicTime"] += self.timer.stop()
+                if i > 1: # for first iteration this was done in setLLR
+                    self.timer.start()
+                    self.ubProvider.solve()
+                    self._stats["heuristicTime"] += self.timer.stop()
                 if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                     candidate = self.ubProvider.solution.copy()
                     ub = self.ubProvider.objectiveValue
                     if self.allZero and ub < 0:
                         self.mlCertificate = False
                         break
-            if node.depth > maxDepth:
-                maxDepth = node.depth
-            if node.lb >= ub - 1e-6:
-                # prune by bound
-                logger.info("node pruned by bound 1")
-                self._stats["prBd1"] += 1
-                if node.parent is not None:
-                    node.parent.updateBound(node.lb, node.branchValue)
-                    if root.lb >= ub - 1e-6:
-                        self._stats["termGap"] += 1
-                        break
-            else:
-                # solve
-                self.timer.start()
-                if self.acgDepth != -1 and node.depth % self.acgDepth == 0:
-                    self.lbProvider.pureLP = False
-                    self.lbProvider.solve()
-                    self.lbProvider.pureLP = True
-                elif node.depth % self.ubDepth == 0:
-                    if self.ubProvider.foundCodeword:
-                        self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
-                        self.lbProvider.solve(hint=self.ubProvider.solution.astype(np.int))
-                    else:
-                        self.lbProvider.hint = None
-                        self.lbProvider.solve()
+            
+            # lower bound calculation
+            self.timer.start()
+            if self.acgDepth != -1 and node.depth % self.acgDepth == 0:
+                self.lbProvider.pureLP = False
+                self.lbProvider.solve()
+                self.lbProvider.pureLP = True
+            elif node.depth % self.ubDepth == 0:
+                if self.ubProvider.foundCodeword:
+                    self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
+                    self.lbProvider.solve(hint=self.ubProvider.solution.astype(np.int))
                 else:
+                    self.lbProvider.hint = None
                     self.lbProvider.solve()
-                self._stats["lpTime"] += self.timer.stop()
+            else:
+                self.lbProvider.solve()
+            self._stats["lpTime"] += self.timer.stop()
+            if self.lbProvider.objectiveValue > node.lb:
                 node.lb = self.lbProvider.objectiveValue
-                if node.parent is not None:
-                    node.parent.updateBound(node.lb, node.branchValue)
-                    if root.lb >= ub - 1e-6:
-                        self._stats["termGap"] += 1
+        
+            # pruning or branching
+            if node.lb == np.inf:
+                logger.info("node pruned by infeasibility")
+                self._stats["prInf"] += 1
+            elif self.lbProvider.foundCodeword:
+                # solution is integral
+                logger.info("node pruned by integrality")
+                if self.lbProvider.objectiveValue < ub:
+                    candidate = self.lbProvider.solution.copy()
+                    ub = self.lbProvider.objectiveValue
+                    logger.info("ub improved to {}".format(ub))
+                    self._stats["prOpt"] += 1
+                    if self.allZero and ub < 0:
+                        self.mlCertificate = False
                         break
-                if node.lb == np.inf:
-                    logger.info("node pruned by infeasibility")
-                    self._stats["prInf"] += 1
-                elif self.lbProvider.foundCodeword:
-                    # solution is integral
-                    logger.info("node pruned by integrality")
-                    if self.lbProvider.objectiveValue < ub:
-                        candidate = self.lbProvider.solution.copy()
-                        ub = self.lbProvider.objectiveValue
-                        logger.info("ub improved to {}".format(ub))
-                        self._stats["prOpt"] += 1
-                        if self.allZero and ub < 0:
-                            self.mlCertificate = False
-                            break
-                else:
-                    if node.lb < ub-1e-6:
-                        # branch
-                        branchIndex = self.branchIndex()
-                        newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
-                        if self.childOrder == "random":
-                            random.shuffle(newNodes)
-                        elif self.childOrder == "llr" and self.llrs[branchIndex] < 0:
-                            newNodes.reverse()
-                        activeNodes.extend(newNodes)
-                        self._stats["nodes"] += 2
-                    else:
-                        logger.info("node pruned by bound 2")
-                        self._stats["prBd2"] += 1
-            if len(activeNodes) == 0:
-                break
-            if self.selectionMethod == "dfs":
-                newNode = activeNodes.pop()
-            elif self.selectionMethod == "bbs":
-                newNode = min(activeNodes, key=lambda n: -n.lb)
-                activeNodes.remove(newNode)
-            elif self.selectionMethod == "bfs":
-                newNode = activeNodes.pop(0)
-            elif self.selectionMethod.startswith("mixed/"):
-                if node.depth >= int(self.selectionMethod[6:]):
-                    newNode = activeNodes.pop(0)
-                else:
-                    newNode = min(activeNodes, key=lambda n: -n.lb)
-                    activeNodes.remove(newNode)
+            elif node.lb < ub-1e-6:
+                # branch
+                branchIndex = self.branchIndex()
+                newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
+                if self.childOrder == "random":
+                    random.shuffle(newNodes)
+                elif self.childOrder == "llr" and self.llrs[branchIndex] < 0:
+                    newNodes.reverse()
+                activeNodes.extend(newNodes)
+                self._stats["nodes"] += 2
             else:
-                raise ValueError("wrong selectionMethod")
+                logger.info("node pruned by bound 2")
+                self._stats["prBd2"] += 1
+            if node.parent is not None:
+                node.parent.updateBound(node.lb, node.branchValue)
+                if root.lb >= ub - 1e-6:
+                    self._stats["termGap"] += 1
+                    break
+            if len(activeNodes) == 0:
+                self._stats["termEx"] += 1
+                break
+            newNode = self.selectNode(activeNodes, node)
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
-        self.lbProvider.reset()
         self.solution = candidate
         self.objectiveValue = ub
         
+        
+    def selectNode(self, activeNodes, currentNode):
+        if self.selectionMethod == "dfs":
+            return activeNodes.pop()
+        elif self.selectionMethod == "bbs":
+            newNode = min(activeNodes, key=lambda n: n.lb)
+            activeNodes.remove(newNode)
+            return newNode
+        elif self.selectionMethod == "bfs":
+            return activeNodes.pop(0)
+        elif self.selectionMethod.startswith("mixed/"):
+            if currentNode.depth >= int(self.selectionMethod[6:]):
+                return activeNodes.pop()
+            else:
+                return activeNodes.pop(0)
+        raise ValueError("wrong selectionMethod")
+    
+    
     def minimumDistance(self):
         assert self.minDistance
-        self.setLLR(np.ones(self.code.blocklength, dtype=np.double))
-        self.solve()
+        llrs = np.ones(self.code.blocklength, dtype=np.double)
+        randomizedMD = True
+        
+        if randomizedMD:
+            delta = 0.01
+            epsilon = delta/self.code.blocklength
+            llrs += 2*epsilon*np.random.random_sample(self.code.blocklength)-epsilon
+        else:
+            delta = 1e-6
+        self.setLLRs(llrs)
+        from .node import Node
+        root = node = Node()
+        root.lb = 1
+        activeNodes = []
+        candidate = None
+        ub = np.inf
+        self._stats["nodes"] += 1
+        for i in itertools.count(start=1):
+            
+            # statistic collection and debug output
+            depthStr = str(node.depth)
+            logger.info('{}/{}, d {}, n {}, c {}, it {}'.format(root.lb, ub, node.depth, len(activeNodes), self.lbProvider.numConstrs, i))
+            if depthStr not in self._stats["nodesPerDepth"]:
+                self._stats["nodesPerDepth"][depthStr] = 0
+            self._stats["nodesPerDepth"][depthStr] += 1
+            node.printFixes()
+            
+            # upper bound calculation
+            if i > 1: # for first iteration this was done in setLLR
+                self.timer.start()
+                self.ubProvider.solve()
+                self._stats["heuristicTime"] += self.timer.stop()
+            if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
+                candidate = self.ubProvider.solution.copy()
+                ub = self.ubProvider.objectiveValue
+            
+            # lower bound calculation
+            self.timer.start()
+            if node.depth % self.ubDepth == 0 and self.ubProvider.foundCodeword:
+                self.lbProvider.solve(hint=self.ubProvider.solution.astype(np.int))
+            else:
+                self.lbProvider.solve()
+            self._stats["lpTime"] += self.timer.stop()
+            if self.lbProvider.objectiveValue > node.lb:
+                node.lb = self.lbProvider.objectiveValue
+            if node.lb == np.inf:
+                logger.info("node pruned by infeasibility")
+                self._stats["prInf"] += 1
+            elif self.lbProvider.foundCodeword and self.lbProvider.objectiveValue > .5:
+                # solution is integral
+                logger.info("node pruned by integrality")
+                if self.lbProvider.objectiveValue < ub:
+                    candidate = self.lbProvider.solution.copy()
+                    ub = self.lbProvider.objectiveValue
+                    logger.info("ub improved to {}".format(ub))
+                    self._stats["prOpt"] += 1
+            elif node.lb < ub-1+2*delta:
+                # branch
+                branchIndex = self.branchIndex()
+                if branchIndex == -1:
+                    for index in range(self.code.blocklength):
+                        if not self.lbProvider.fixed(index):
+                            branchIndex = index
+                if branchIndex == -1:
+                    node.lb = np.inf
+                    print('********** PRUNE 000000 ***************')
+                    raw_input()
+                else:
+                    newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
+                    if self.childOrder == "random":
+                        random.shuffle(newNodes)
+                    elif self.childOrder == "llr" and self.llrs[branchIndex] < 0:
+                        newNodes.reverse()
+                    activeNodes.extend(newNodes)
+                    self._stats["nodes"] += 2
+            else:
+                logger.info("node pruned by bound 2")
+                self._stats["prBd2"] += 1
+            if node.parent is not None:
+                node.parent.updateBound(node.lb, node.branchValue)
+                if root.lb >= ub - 1+2*delta:
+                    self._stats["termGap"] += 1
+                    break
+            if len(activeNodes) == 0:
+                self._stats["termEx"] += 1
+                break
+            if root.lb == 1:
+                sm = self.selectionMethod
+                self.selectionMethod = "bbs"
+            newNode = self.selectNode(activeNodes, node)
+            if root.lb == 1:
+                self.selectionMethod = sm
+            move(self.lbProvider, self.ubProvider, node, newNode)
+            node = newNode
+        self.solution = candidate
+        self.objectiveValue = np.rint(ub)
         return self.objectiveValue
         
     def params(self):

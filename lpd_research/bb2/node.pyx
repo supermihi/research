@@ -15,11 +15,12 @@ cdef class Node:
         self.parent = kwargs.get("parent", None)
         self.branchIndex = kwargs.get("branchIndex", -1)
         self.branchValue = kwargs.get("branchValue", -1)
-        self.lb = -inf
         if self.parent is not None:
             self.depth = self.parent.depth + 1
+            self.lb = self.parent.lb
         else:
             self.depth = 0
+            self.lb = -inf
         self.lbChild0 = self.lbChild1 = -inf
         
     cpdef updateBound(self, double lbChild, int childValue):
@@ -34,3 +35,10 @@ cdef class Node:
             self.lb = newLb
             if self.parent is not None:
                 self.parent.updateBound(newLb, self.branchValue)
+                
+    def printFixes(self):
+        cdef Node node = self
+        while node is not None:
+            print('x{}={}, '.format(node.branchIndex, node.branchValue), end='')
+            node = node.parent
+        print()
