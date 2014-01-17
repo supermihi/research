@@ -22,6 +22,7 @@ cdef class Node:
             self.depth = 0
             self.lb = -inf
         self.lbChild0 = self.lbChild1 = -inf
+        self.flag = False
         
     cpdef updateBound(self, double lbChild, int childValue):
         cdef double newLb, oldChild = self.lbChild0 if childValue == 0 else self.lbChild1
