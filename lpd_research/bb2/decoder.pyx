@@ -63,11 +63,11 @@ cdef enum SelectionMethod:
 cdef class BranchAndBoundLDPCDecoder(Decoder):
 
     cdef:
-        bint glpk, minDistance, allZero, calcUb, ubBB, highSNR
+        bint glpk, minDistance, allZero, calcUb, ubBB, highSNR, cyclic
         object childOrder
         SelectionMethod selectionMethod
         BranchMethod branchMethod
-        Decoder lbProvider, ubProvider
+        public Decoder lbProvider, ubProvider
         int mixParam, maxRPCspecial, maxRPCnormal, maxRPCorig
         double mixGap
         StopWatch timer
@@ -80,6 +80,7 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
                  allZero=False,
                  minimumDistance=False,
                  highSNR=False,
+                 cyclic=False,
                  name="BBDecoder", lpParams=None, iterParams=None):
         
         self.name = name
@@ -97,6 +98,7 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
         self.glpk = glpk
         self.highSNR = highSNR
         self.allZero = allZero
+        self.cyclic = cyclic
         if branchMethod == "mostFractional":
             self.branchMethod = mostFractional
         elif branchMethod == "leastReliable":
@@ -147,6 +149,8 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
             del stats["iterStats"]
         else:
             self.ubProvider.setStats(dict())
+        if self.cyclic and "prCyc" not in stats:
+            stats["prCyc"] = 0
         Decoder.setStats(self, stats)
     
 
@@ -163,13 +167,22 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
             double minDiff = np.inf
             np.double_t[:] solution = self.lbProvider.solution
         if self.branchMethod == mostFractional:
-            for i in range(solution.shape[0]):
+            for i in range(self.code.blocklength if not (self.minDistance and self.cyclic) else self.code.infolength):
                 if fabs(solution[i] - .5) < minDiff:
                     index = i
                     minDiff = fabs(solution[i] - .5)
             if solution[index] < 1e-6 or solution[index] > 1-1e-6:
+                if self.cyclic:
+                    for i in range(self.code.infolength, self.code.blocklength):
+                        if fabs(solution[i] - .5 < minDiff):
+                            index = i
+                            minDiff = fabs(solution[i] - .5)
+                    if minDiff <= 0.5-1e-6:
+                        return index
                 for index in range(self.code.blocklength):
                     if not self.fixed(index):
+                        if self.cyclic and index >= self.code.infolength:
+                            print('baba')
                         return index
                 return -1
             return index
@@ -248,7 +261,7 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
             
             # statistic collection and debug output
             depthStr = str(node.depth)
-            if i > 1 and i % 10 == 0:
+            if i > 1 and i % 1000 == 0:
                 logger.info('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(root.lb, ub, node.depth, len(activeNodes), self.lbProvider.numConstrs, i, self._stats["lpTime"], self._stats["heuristicTime"]))
             if depthStr not in self._stats["nodesPerDepth"]:
                 self._stats["nodesPerDepth"][depthStr] = 0
@@ -396,62 +409,70 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
                 self._stats["nodesPerDepth"][depthStr] = 0
             self._stats["nodesPerDepth"][depthStr] += 1
             #node.printFixes()
+            pruned = False
             if node.lb >= ub-1+delta:
                 logger.debug('prune 1')
-            # upper bound calculation
-            if i > 1 and self.calcUb: # for first iteration this was done in setLLR
-                self.timer.start()
-                self.ubProvider.solve()
-                self._stats["heuristicTime"] += self.timer.stop()
-            if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
-                candidate = self.ubProvider.solution.copy()
-                ub = self.ubProvider.objectiveValue
-            
-            # lower bound calculation
-            self.lbProvider.upperBound = ub - 1 + delta
-            self.timer.start()
-            if (i == 1 or self.calcUb) and self.ubProvider.foundCodeword:
-                self.lbProvider.solve(hint=self.ubProvider.solution.astype(np.int))
-            else:
-                self.lbProvider.solve()
-            self._stats["lpTime"] += self.timer.stop()
-            if self.lbProvider.objectiveValue > node.lb:
-#                 fractVal = self.lbProvider.objectiveValue - np.trunc(self.lbProvider.objectiveValue)
-#                 if fractVal > delta and fractVal < 1-1e-6:
-#                     node.lb = np.ceil(self.lbProvider.objectiveValue)
-#                 else:
-                node.lb = self.lbProvider.objectiveValue
-            if node.lb == np.inf:
-                logger.debug("node pruned by infeasibility")
-                self._stats["prInf"] += 1
-            elif self.lbProvider.foundCodeword and self.lbProvider.objectiveValue > .5:
-                # solution is integral
-                logger.debug("node pruned by integrality")
-                if self.lbProvider.objectiveValue < ub:
-                    candidate = self.lbProvider.solution.copy()
-                    print('cand lb')
-                    print(candidate)
-                    ub = self.lbProvider.objectiveValue
-                    logger.debug("ub improved to {}".format(ub))
-                    self._stats["prOpt"] += 1
-            elif node.lb < ub-1+delta:
-                # branch
-                branchIndex = self.branchIndex()
-                if branchIndex == -1:
+                node.lb = np.inf
+                pruned = True
+            if self.cyclic:
+                r = np.floor(self.code.infolength*(np.floor(ub)-1)/self.code.blocklength) 
+                if self.lbProvider.numFixedOnes() > r:
+                    #logger.info("prune cyclic")
+                    pruned = True
+                    self._stats["prCyc"] += 1
                     node.lb = np.inf
-                    print('********** PRUNE 000000 ***************')
-                    #raw_input()
+            
+            if not pruned:
+                # upper bound calculation
+                if i > 1 and self.calcUb: # for first iteration this was done in setLLR
+                    self.timer.start()
+                    self.ubProvider.solve()
+                    self._stats["heuristicTime"] += self.timer.stop()
+                if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
+                    candidate = self.ubProvider.solution.copy()
+                    ub = self.ubProvider.objectiveValue
+                
+                # lower bound calculation
+                self.lbProvider.upperBound = ub - 1 + delta
+                self.timer.start()
+                if (i == 1 or self.calcUb) and self.ubProvider.foundCodeword:
+                    self.lbProvider.solve(hint=self.ubProvider.solution.astype(np.int))
                 else:
-                    newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
-                    if self.childOrder == "random":
-                        random.shuffle(newNodes)
-                    elif (self.childOrder == "llr" and self.llrs[branchIndex] < 0) or self.childOrder == "10":
-                        newNodes.reverse()
-                    activeNodes.extend(newNodes)
-                    self._stats["nodes"] += 2
-            else:
-                logger.debug("node pruned by bound 2")
-                self._stats["prBd2"] += 1
+                    self.lbProvider.solve()
+                self._stats["lpTime"] += self.timer.stop()
+                if self.lbProvider.objectiveValue > node.lb:
+                    node.lb = self.lbProvider.objectiveValue
+                if node.lb == np.inf:
+                    logger.debug("node pruned by infeasibility")
+                    self._stats["prInf"] += 1
+                elif self.lbProvider.foundCodeword and self.lbProvider.objectiveValue > .5:
+                    # solution is integral
+                    logger.debug("node pruned by integrality")
+                    if self.lbProvider.objectiveValue < ub:
+                        candidate = self.lbProvider.solution.copy()
+                        print('cand lb')
+                        print(candidate)
+                        ub = self.lbProvider.objectiveValue
+                        logger.debug("ub improved to {}".format(ub))
+                        self._stats["prOpt"] += 1
+                elif node.lb < ub-1+delta:
+                    # branch
+                    branchIndex = self.branchIndex()
+                    if branchIndex == -1:
+                        node.lb = np.inf
+                        print('********** PRUNE 000000 ***************')
+                        #raw_input()
+                    else:
+                        newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
+                        if self.childOrder == "random":
+                            random.shuffle(newNodes)
+                        elif (self.childOrder == "llr" and self.llrs[branchIndex] < 0) or self.childOrder == "10":
+                            newNodes.reverse()
+                        activeNodes.extend(newNodes)
+                        self._stats["nodes"] += 2
+                else:
+                    logger.debug("node pruned by bound 2")
+                    self._stats["prBd2"] += 1
             if node.parent is not None:
                 node.parent.updateBound(node.lb, node.branchValue)
                 if root.lb >= ub - 1 + delta:
