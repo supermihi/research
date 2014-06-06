@@ -45,15 +45,17 @@ cdef class IOWE:
         self.withInput = itable.shape[1] == 4
 
     @staticmethod
-    def fromFile(path, K, codewords=False):
+    def fromFile(path, K, bint codewords=False, bint stopping=False):
         """Read the IOWE from a file. Can be bzip2'ed."""
         cdef:
-            int i = 0
+            int i = 0, input = -1
             np.ndarray[ndim=2,dtype=np.int_t] itable
             np.ndarray[ndim=1,dtype=np.double_t] ftable
         thefile = bz2.BZ2File(path, 'r') if path.endswith('bz2') else open(path, 'rt')
         entries = []
         input = -1
+        if stopping:
+            input = True
         with thefile as file:
             for line in file:
                 spl = line.split()
@@ -65,7 +67,10 @@ cdef class IOWE:
                         continue
                     if (not input) and vals[0] != 0:
                         continue 
-                entries.append(vals)
+                if stopping:
+                    entries.append((0, vals[0], 0, vals[1], vals[2]))
+                else:
+                    entries.append(vals)
         length = len(entries)
         itable = np.empty((length, 4 if input else 2), dtype=np.int)
         ftable = np.empty(length, dtype=np.double)
@@ -181,7 +186,7 @@ cdef class TrinomTable:
     
 
 @cython.wraparound(False)
-def concatenatedIOWE(IOWE inner, int MAXW=50):
+def concatenatedIOWE(IOWE inner, int MAXW1=50, int MAXW2=50):
     cdef:
         np.ndarray[ndim=2, dtype=np.int_t] out_ind_d = np.empty((0,4), dtype=np.int, order='C')
         np.ndarray[ndim=1, dtype=np.double_t] out_val_d = np.empty(0, dtype=np.double, order='C')
@@ -189,7 +194,7 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
         np.double_t[:] out_val
         np.ndarray[ndim=2, dtype=np.int_t] itable = inner.itable
         np.ndarray[ndim=1, dtype=np.double_t] ftable = inner.ftable
-        np.double_t[:] tmpout = mininf*np.ones((MAXW+1)*(MAXW+1), dtype=np.double)
+        np.double_t[:] tmpout = mininf*np.ones((MAXW1+1)*(MAXW2+1), dtype=np.double)
         int i = 0, j, qb1, qb2, q1, q2, itableSize = itable.shape[0]
         int jLow = 0, jHigh = 1, tmpIndex, outSize = 0, numTotal = 0, numTmp = 0
         int currentW1 = 0, currentW2 = 0, w1 = 0, w2 = 0, qa1 = 0, qa2 = 0
@@ -203,10 +208,10 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
             qb2 = itable[j,3]
             q1 = qa1 + qb1
             q2 = qa2 + qb2
-            if q1 > MAXW or q2 > MAXW:
+            if q1 > MAXW1 or q2 > MAXW2:
                 continue
             newVal = ftable[i] + ftable[j]
-            tmpIndex = (MAXW+1)*q1+q2
+            tmpIndex = (MAXW1+1)*q1+q2
             oldVal = tmpout[tmpIndex]
             if oldVal == mininf:
                 tmpout[tmpIndex] = newVal
@@ -237,8 +242,8 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
                     tmpVal = tmpout[j]
                     if tmpVal != mininf:
                         numTmp -= 1
-                        q1 = j // (MAXW+1)
-                        q2 = j % (MAXW+1)
+                        q1 = j // (MAXW2+1)
+                        q2 = j % (MAXW2+1)
                         out_ind[tmpIndex,0] = currentW1
                         out_ind[tmpIndex,1] = currentW2
                         out_ind[tmpIndex,2] = q1
@@ -263,9 +268,9 @@ def concatenatedIOWE(IOWE inner, int MAXW=50):
     return IOWE(out_ind_d, out_val_d, inner.K)
 
 @cython.wraparound(False)
-cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW=50):
+cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW1=50, int MAXW2=50):
     cdef:
-        np.double_t[:] out = mininf*np.ones((MAXW+1)**2, dtype=np.double)
+        np.double_t[:] out = mininf*np.ones((MAXW1+1)*(MAXW2+1), dtype=np.double)
         np.int_t[:,:] itable_pcc = pcc.itable
         np.int_t[:,:] itable_inner = inner.itable
         np.double_t[:] ftable_pcc = pcc.ftable
@@ -276,6 +281,7 @@ cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW=50):
         int K = pcc.K, twoLambdaK = pcc.K//2, twoK = 2*pcc.K
         int w1, w2, h1, h2, n1, n2, q1, q2, currentN1 = -1, currentN2 = -1
         double newVal, oldVal, middleterm, middledenom = logbinom(twoK, twoLambdaK)
+        int MAXW = max(MAXW1, MAXW2)
         BinomTable t1 = BinomTable(0, MAXW, 0, MAXW)
         BinomTable t2 = BinomTable(twoK-2*MAXW, twoK, twoLambdaK-2*MAXW, twoLambdaK)
         TrinomTable tt = TrinomTable(twoLambdaK, MAXW)
@@ -302,12 +308,12 @@ cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW=50):
                 currentN2 = n2
                 middleterm = t1.get(q1, n1) + t1.get(q2, n2) + t2.get(twoK-q1-q2, twoLambdaK-n1-n2) - tt.get(n1, n2)
             h2 = itable_inner[j,3] + w2 + q2 - n2
-            if h2 < 0 or h2 > MAXW:
+            if h2 < 0 or h2 > MAXW2:
                 continue
             h1 = itable_inner[j,2] + w1 + q1 - n1
-            if h1 < 0 or h1 > MAXW:
+            if h1 < 0 or h1 > MAXW1:
                 continue
-            index = (MAXW+1)*h1+h2
+            index = (MAXW1+1)*h1+h2
             newVal = ftable_pcc[i] + ftable_inner[j] + middleterm
             oldVal = out[index]
             if oldVal == mininf:
@@ -321,8 +327,8 @@ cpdef IOWE completeWE(IOWE pcc, IOWE inner, int MAXW=50):
     ft_out = np.empty(n_out, dtype=np.double)
     j = 0
     index = 0
-    for h1 in range(MAXW+1):
-        for h2 in range(MAXW+1):
+    for h1 in range(MAXW1+1):
+        for h2 in range(MAXW2+1):
             if out[j] != mininf:
                 it_out[index,0] = h1
                 it_out[index,1] = h2
@@ -346,6 +352,7 @@ def estimateAWGNPseudoweight(np.double_t[:,:] array, float threshold):
         i -= 1
     previous = array[i, 0]
     print('previous = {} at index {}'.format(previous, i))
+    print('threshold: {}'.format(exp(sum)))
     return hbar
 
 

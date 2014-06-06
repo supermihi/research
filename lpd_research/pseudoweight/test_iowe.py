@@ -30,34 +30,56 @@ def removeDuplicates(theiowe, codewords=False, eiriksVersion=False):
     ftable = np.array(table.values(), dtype=np.double)
     return iowe.IOWE(itable, ftable, theiowe.K)
 
-def chain(outer, inner, codewords=False, eiriksVersion=False):
-    outerRed = removeDuplicates(outer, codewords, eirik)
-    outerRed.write('pseudoIOWE_Outer_K{}_nodups_24oct{}.txt.bz2'.format(outer.K, '_eirik' if eiriksVersion else ""))
-    print('outer duplicates removed')
-    pcc = iowe.concatenatedIOWE(outerRed)
+
+def nodupsPath(path, eiriksVersion):
+    name, suffix = path.split('.', 1)
+    insert = '_nodups' + '_eirik' if eiriksVersion else ''
+    return name + insert + '.' + suffix
+
+def chain(K, outerPath, innerPath, codewords=False, eiriksVersion=False, stopping=False):
+    maxw1 = 0 if stopping else 50
+    maxw2 = 192 if stopping else 50
+    outer = iowe.IOWE.fromFile(outerPath, K, stopping=stopping)
+    print('done reading outer')
+    if stopping:
+        outerRed = outer
+    else:
+        outerRed = removeDuplicates(outer, codewords, eirik)
+        outerRed.write(nodupsPath(outerPath, eiriksVersion))
+        print('outer duplicates removed')
+    inner = iowe.IOWE.fromFile(innerPath, K, stopping=stopping)
+    print('done reading inner')
+    if stopping:
+        innerRed = inner
+    else:
+        innerRed = removeDuplicates(inner, codewords, eirik)
+        innerRed.write(nodupsPath(innerPath, eiriksVersion))
+        print('inner duplicates removed')
+    pcc = iowe.concatenatedIOWE(outerRed, MAXW1=maxw1, MAXW2=maxw2)
     print('pcc computed')
-    pcc.write('pseudoIOWE_PCC_K{}_nodups_24oct_{}.txt.bz2'.format(outer.K, '_eirik' if eiriksVersion else ""))
-    innerRed = removeDuplicates(inner, codewords, eirik)
-    innerRed.write('pseudoIOWE_Inner_K{}_nodups_24oct{}.txt.bz2'.format(outer.K, '_eirik' if eiriksVersion else ""))
-    print('inner duplicates removed')
-    we = iowe.completeWE(pcc, innerRed)
+    firstPart = outerPath.split('_', 1)[0]
+    pcc.write(firstPart + '_PCC_K{}_nodups_{}.txt.bz2'.format(K, '_eirik' if
+        eiriksVersion else ""))
+    we = iowe.completeWE(pcc, innerRed, MAXW1=maxw1, MAXW2=maxw2)
     print('complete WE computed')
-    we.write('pseudoWE_3DTC_K{}_24oct_{}{}.txt.bz2'.format(outer.K, "_dmin" if codewords else "", '_eirik' if eiriksVersion else ''))
+    name = ('stopipng' if stopping else 'pseudo') + '_3DTC_K{}_'.format(K)
+    we.write(name + '{}{}.txt.bz2'.format('_dmin' if codewords else "",
+                                          '_eirik' if eiriksVersion else ''))
     print('complete WE written')
     sortd = we.toSortedPseudoweight()
     result = iowe.estimateAWGNPseudoweight(sortd, .5)
-    print('estimated pseudoweight: {}'.format(result))
+    print('estimated weight: {}'.format(result))
 
 if __name__ == "__main__":
     K = int(sys.argv[1])
-    outer = iowe.IOWE.fromFile(sys.argv[2], K)
-    print('done reading outer')
-    inner = iowe.IOWE.fromFile(sys.argv[3], K)
-    print('done reading inner')
     codewords = bool(int(sys.argv[4]))
     eirik = bool(int(sys.argv[5]))
+    stopping = False
+    if len(sys.argv) > 6:
+        stopping = bool(int(sys.argv[6]))
+        print('stopping={}'.format(stopping))
     if codewords:
         print('dmin case')
     if eirik:
         print('eiriks version')
-    chain(outer, inner, codewords, eirik)
+    chain(K, sys.argv[2], sys.argv[3], codewords, eirik, stopping)
