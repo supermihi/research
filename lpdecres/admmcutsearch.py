@@ -6,9 +6,9 @@ Created on Thu Oct 23 13:25:30 2014
 """
 
 from __future__ import division
+from docutils.nodes import thead
 import numpy as np
 from numpy import maximum, minimum
-import matplotlib.pyplot as plt
 from numpy import linalg as LA
 from lpdec.decoders import Decoder
 
@@ -84,7 +84,7 @@ class ADMMDecoder(Decoder):
         self.solution = x_new
         self.objectiveValue = np.dot(gamma,x_new)
         
-    def conv(self, Pj,zj,M):
+    def conv(self, Pj, zj, M):
         z  = []
         for j in range(M):
             zk = np.dot(np.transpose(Pj[j]),np.transpose(zj[j]))
@@ -101,8 +101,9 @@ class ADMMDecoder(Decoder):
         else:
             res = z
             return res
-    
-    def csa(self, u):
+
+    @staticmethod
+    def csa(u):
         theta = np.zeros(np.size(u))
         for i in range(np.size(u)):
             if u[i] > 0.5:
@@ -119,8 +120,9 @@ class ADMMDecoder(Decoder):
             logic = 0
             theta = 0
             return theta, logic
-        
-    def opt(self, u,theta):
+
+    @staticmethod
+    def opt(u,theta):
         j  = 0
         Tj = np.zeros(np.size(u))
         for i in range(np.size(u)):
@@ -166,6 +168,20 @@ if __name__ == "__main__":
     print "objective value f = ", decoder.objectiveValue
     print "Hx = ", np.dot(H,decoder.solution)
     print "signal = ", signal
+
+    u = np.array([-1.029000755483433, 0.206512231401114, 1.341111305902483, 1.332716574126045])
+    u2 = u.copy()
+    u2[0] = 0
+    u2[2] = u2[3] = 1
+    theta = ADMMDecoder.csa(u2)[0]
+    print(theta)
+    y = ADMMDecoder.opt(u, theta)
+    print(y)
+    xstar = maximum(0, minimum(1, u-y*theta))
+    print(np.dot(xstar, theta))
+    wrongtheta = np.array([-1, -1, -1, 1])
+    print(np.dot(theta, u))
+    print(np.dot(wrongtheta, u))
     #normx = decoder.check
     #plt.plot(range(np.size(normx)),normx,'r')
         

@@ -431,6 +431,8 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
                 if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                     candidate = self.ubProvider.solution.copy()
                     ub = self.ubProvider.objectiveValue
+                    if ub == 2:
+                        print('omg?')
                 
                 # lower bound calculation
                 self.lbProvider.upperBound = ub - 1 + delta
@@ -485,6 +487,7 @@ cdef class BranchAndBoundLDPCDecoder(Decoder):
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
         self.solution = candidate
+        assert self.code.check(self.solution)
         self.objectiveValue = np.rint(ub)
         return self.objectiveValue
         
