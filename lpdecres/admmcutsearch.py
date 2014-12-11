@@ -5,7 +5,7 @@ Created on Thu Oct 23 13:25:30 2014
 @author: karunia
 """
 
-from __future__ import division
+from __future__ import division, print_function
 from docutils.nodes import thead
 import numpy as np
 from numpy import maximum, minimum
@@ -164,10 +164,10 @@ if __name__ == "__main__":
     print(decoder.objectiveValue)
     print(decoder.solution)
     H      = code.parityCheckMatrix
-    print "solution x = ", decoder.solution
-    print "objective value f = ", decoder.objectiveValue
-    print "Hx = ", np.dot(H,decoder.solution)
-    print "signal = ", signal
+    print("solution x = ", decoder.solution)
+    print("objective value f = ", decoder.objectiveValue)
+    print("Hx = ", np.dot(H,decoder.solution))
+    print("signal = ", signal)
 
     u = np.array([-1.029000755483433, 0.206512231401114, 1.341111305902483, 1.332716574126045])
     u2 = u.copy()
