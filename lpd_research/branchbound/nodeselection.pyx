@@ -467,7 +467,7 @@ cdef class DFSMethod(SelectionMethod):
         self.moveTime += moveTimer.duration
         with stopwatch() as timer:
             if activeNode.depth > 0 and activeNode.parent.lowerb > -np.inf:
-                self.problem.solve(activeNode.parent.lowerb)
+                self.problem.solve()
             else:
                 self.problem.solve()
         self.lpTime += timer.duration
@@ -522,7 +522,7 @@ cdef class MyDFSMethod(SelectionMethod):
         with stopwatch() as timer:
             if activeNode.parent is not None:
                 lb = activeNode.parent.lowerb
-            if self.problem.solve(lb, self.root.upperb) == -2:
+            if self.problem.solve() == -2:
                 activeNode.upperb = activeNode.lowerb = self.root.upperb
                 return activeNode
         self.lpTime += timer.duration
@@ -944,7 +944,7 @@ cdef class DSTMethod(SelectionMethod):
         parent.child0 = Node(parent, branchVariable, 0)
         self.problem.fixVariable(branchVariable, 0)
         with stopwatch() as timer:
-            if self.problem.solve(parent.lowerb, parent.upperb) == -2:
+            if self.problem.solve() == -2:
                 parent.child0.upperb = self.problem.objectiveValue
                 parent.child0.solution = parent.solution
             else:
@@ -970,7 +970,7 @@ cdef class DSTMethod(SelectionMethod):
         parent.child1 = Node(parent, branchVariable, 1)
         self.problem.fixVariable(branchVariable, 1)
         with stopwatch() as timer:
-            if self.problem.solve(parent.lowerb, parent.upperb) == -2:
+            if self.problem.solve() == -2:
                 parent.child1.upperb = self.problem.objectiveValue
                 parent.child1.solution = parent.solution.copy()
             else:
