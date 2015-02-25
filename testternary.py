@@ -13,14 +13,16 @@ if __name__ == '__main__':
         parityCheckMatrix='~/papers/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
     print(code.parityCheckMatrix)
     decFL = FlanaganLPDecoder(code, ml=False)
+    print('decFL')
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     decTE = AdaptiveTernaryLPDecoder(code)
+    print('decTE')
     simulation.ALLOW_DIRTY_VERSION = True
     simulation.ALLOW_VERSION_MISMATCH = True
     #simulation.DEBUG_SAMPLE = 8
     db.init('sqlite:///:memory:')
-    channel = AWGNC(0, code.rate, seed=8374, q=3)
-    simulator = Simulator(code, channel, [decTE], 'ternary')
+    channel = AWGNC(3, code.rate, seed=8374, q=3)
+    simulator = Simulator(code, channel, [decFL, decTE], 'ternary')
     simulator.maxSamples = 1000
     simulator.maxErrors = 100
     simulator.wordSeed = 1337
@@ -28,6 +30,10 @@ if __name__ == '__main__':
     simulator.dbStoreTimeInterval = 10
     simulator.revealSent = True
     simulator.concurrent = False
+    import pstats, cProfile
+    # cProfile.runctx("simulator.run()", globals(), locals(), "Profile.prof")
+    # s = pstats.Stats("Profile.prof")
+    # s.strip_dirs().sort_stats("time").print_stats()
     simulator.run()
     print(decTE.stats())
     print(decFL.stats())
