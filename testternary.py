@@ -22,7 +22,7 @@ if __name__ == '__main__':
     #simulation.DEBUG_SAMPLE = 8
     db.init('sqlite:///:memory:')
     channel = AWGNC(3, code.rate, seed=8374, q=3)
-    simulator = Simulator(code, channel, [decFL, decTE], 'ternary')
+    simulator = Simulator(code, channel, [decTE], 'ternary')
     simulator.maxSamples = 1000
     simulator.maxErrors = 100
     simulator.wordSeed = 1337

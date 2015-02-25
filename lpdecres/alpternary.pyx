@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=False
-# cython: nonecheck=False
-# cython: cdivision=True
-# cython: wraparound=False
+# cython: boundscheck=True
+# cython: nonecheck=True
+# cython: cdivision=False
+# cython: wraparound=True
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -36,7 +36,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         self.matrix = code.parityCheckMatrix
         model.setParam('OutputFlag', 0)
         model.setParam('Threads', 1)
-        self.x = np.empty((code.blocklength, 2), dtype=np.object)
+        self.x = np.empty((code.blocklength, 3), dtype=np.object)
         self.xvars = []
         for i in range(code.blocklength):
             for k in range(1, code.q):
@@ -139,7 +139,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     iPlusV = psiPlus[i]
                 else:
                     jPlus = i
-                    jplusV = psiPlus[i]
+                    jPlusV = psiPlus[i]
             if psiMinus[i] < jMinusV:
                 if psiMinus[i] < iMinusV:
                     jMinus = iMinus
@@ -148,10 +148,10 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     iMinusV = psiMinus[i]
                 else:
                     jMinus = i
-                    jplusV = psiMinus[i]
-        if Psi < 2 - 1e-8 and eta % 3 == 2:
+                    jPlusV = psiMinus[i]
+        if Psi < 2 - 1e-12 and eta % 3 == 2:
             cut = True
-        elif Psi < 2 - 1e-8:
+        elif Psi < 2 - 1e-12:
             # argsPlus = np.argsort(psiPlus[:d])
             # argsMinus = np.argsort(psiMinus[:d])
             # iPlus = argsPlus[0]
@@ -174,7 +174,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     k[iPlus] += 1
                     k[jPlus] += 1
                     Psi += psiPlus[iPlus] + psiPlus[jPlus]
-            if Psi < 2 - 1e-8:
+            if Psi < 2 - 1e-12:
                 cut = True
         if cut:
             kSum = 0
@@ -236,7 +236,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     iPlusV = psiPlus[i]
                 else:
                     jPlus = i
-                    jplusV = psiPlus[i]
+                    jPlusV = psiPlus[i]
             if psiMinus[i] < jMinusV:
                 if psiMinus[i] < iMinusV:
                     jMinus = iMinus
@@ -245,10 +245,10 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     iMinusV = psiMinus[i]
                 else:
                     jMinus = i
-                    jplusV = psiMinus[i]
-        if Psi < 2 - 1e-8 and eta % 3 == 2:
+                    jPlusV = psiMinus[i]
+        if Psi < 2 - 1e-12 and eta % 3 == 2:
             cut = True
-        elif Psi < 2 - 1e-8:
+        elif Psi < 2 - 1e-12:
             # argsPlus = np.argsort(psiPlus[:d])
             # argsMinus = np.argsort(psiMinus[:d])
             # iPlus = argsPlus[0]
@@ -271,7 +271,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     k[iPlus] += 1
                     k[jPlus] += 1
                     Psi += psiPlus[iPlus] + psiPlus[jPlus]
-            if Psi < 2 - 1e-8:
+            if Psi < 2 - 1e-12:
                 cut = True
         if cut:
             kSum = 0
@@ -327,16 +327,17 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                 cutAdded |= self.cutSearch(j)
             if not cutAdded:
                 self.mlCertificate = self.foundCodeword = True
+                self.objectiveValue = self.model.ObjVal
                 for i in range(self.code.blocklength):
                     self.solution[i] = 0
                     for j in (1, 2):
-                        if xVals[i, j] > 1e-5:
+                        if xVals[i, j] > 1e-3:
                             if self.solution[i] != 0:
                                 self.mlCertificate = self.foundCodeword = False
-                                self.solution[i] = .5  # error
+                                self.solution[:] = .5  # error
+                                return
                             else:
                                 self.solution[i] = j
-                self.objectiveValue = self.model.ObjVal
                 break
 
     def params(self):
