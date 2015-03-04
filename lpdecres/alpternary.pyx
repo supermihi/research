@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=True
-# cython: nonecheck=True
+# cython: boundscheck=False
+# cython: nonecheck=False
 # cython: cdivision=False
-# cython: wraparound=True
+# cython: wraparound=False
+# distutils: libraries = [gurobi60]
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -14,13 +15,17 @@ import numpy as np
 cimport numpy as np
 from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
+cimport gurobimh as gu
 import gurobimh as gu
+
+cdef double inf = np.inf
 
 
 cdef class AdaptiveTernaryLPDecoder(Decoder):
 
     cdef list Nj, hj, xj, xvars
-    cdef object model, timer
+    cdef object timer
+    cdef gu.Model model
     cdef double[:,:] xVals, xjVals
     cdef np.ndarray psiPlus, psiMinus
     cdef np.int_t[:,:] matrix
@@ -40,7 +45,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         self.xvars = []
         for i in range(code.blocklength):
             for k in range(1, code.q):
-                var = self.model.addVar(0, 1, name='x{},{}'.format(i, k))
+                var = self.model.addVar(0, 1, 0, gu.GRB.CONTINUOUS, name='x{},{}'.format(i, k))
                 self.x[i, k] = var
                 self.xvars.append(var)
         self.model.update()
@@ -74,7 +79,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         self.theta = np.empty(2*code.blocklength, dtype=np.intc)
 
     def setStats(self, stats):
-        for stat in 'cuts', 'totalLPs', 'lpTime', 'simplexIters':
+        for stat in 'cuts', 'totalLPs', 'simplexIters', 'optTime':
             if stat not in stats:
                 stats[stat] = 0
         Decoder.setStats(self, stats)
@@ -108,7 +113,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         Psi = 0
         eta = 0
         cut = False
-        iPlusV = jPlusV = iMinusV = jMinusV = np.inf
+        iPlusV = jPlusV = iMinusV = jMinusV = inf
         iPlus = iMinus = jPlus = jMinus = 0
         for i in range(d):
             a = 1 - 3*xjVals[i, 2]
@@ -195,9 +200,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 1
                     theta[2*i+1] = 2
                     #lhs += xj[i, 1] + 2*xj[i, 2]
-            with self.timer:
-                self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
-            self._stats['lpTime'] += self.timer.duration
+            self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             anyCut = True
             self._stats['cuts'] += 1
 
@@ -205,7 +208,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         Psi = 0
         eta = 0
         cut=False
-        iPlusV = jPlusV = iMinusV = jMinusV = np.inf
+        iPlusV = jPlusV = iMinusV = jMinusV = inf
         iPlus = iMinus = jPlus = jMinus = 0
         for i in range(d):
             a = 1 - 3*xjVals[i, 2]
@@ -292,29 +295,26 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 2
                     theta[2*i+1] = 1
                     #lhs += 2*xj[i, 1] + xj[i, 2]
-            with self.timer:
-                self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
-            self._stats['lpTime'] += self.timer.duration
+            self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             self._stats['cuts'] += 1
             anyCut = True
         return anyCut
 
 
-    cpdef solve(self, double lb=-np.inf, double ub=np.inf):
+    cpdef solve(self, double lb=-inf, double ub=inf):
         cdef int i, j
         cdef bint cutAdded
         cdef double[:, :] xVals = self.xVals
-        with self.timer:
-            self.model.setObjective(gu.LinExpr(self.llrs, self.xvars))
-            for constr in self.model.getConstrs():
-                if constr.ConstrName[0] != 'S':
-                    self.model.remove(constr)
-        self._stats['lpTime'] += self.timer.duration
+        self.model.setObjective(gu.LinExpr(self.llrs, self.xvars))
+        for constr in self.model.getConstrs():
+            if constr.ConstrName[0] != 'S':
+                self.model.remove(constr)
+        self.mlCertificate = self.foundCodeword = True
         while True:
             self._stats['totalLPs'] += 1
             with self.timer:
                 self.model.optimize()
-            self._stats['lpTime'] += self.timer.duration
+            self._stats['optTime'] += self.timer.duration
             self._stats['simplexIters'] += self.model.IterCount
             if self.model.Status != gu.GRB.OPTIMAL:
                 raise RuntimeError('unknown Gurobi status {}'.format(self.model.Status))
@@ -326,13 +326,12 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
             for j in range(self.matrix.shape[0]):
                 cutAdded |= self.cutSearch(j)
             if not cutAdded:
-                self.mlCertificate = self.foundCodeword = True
                 self.objectiveValue = self.model.ObjVal
                 for i in range(self.code.blocklength):
                     self.solution[i] = 0
                     for j in (1, 2):
                         if xVals[i, j] > 1e-3:
-                            if self.solution[i] != 0:
+                            if self.solution[i] != 0 or xVals[i, j] < 1 - 1e-3:
                                 self.mlCertificate = self.foundCodeword = False
                                 self.solution[:] = .5  # error
                                 return

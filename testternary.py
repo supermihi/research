@@ -12,7 +12,7 @@ if __name__ == '__main__':
     code = NonbinaryLinearBlockCode(
         parityCheckMatrix='~/papers/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
     print(code.parityCheckMatrix)
-    decFL = FlanaganLPDecoder(code, ml=False)
+    decFL = StaticLPDecoder(code, ml=False)
     print('decFL')
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     decTE = AdaptiveTernaryLPDecoder(code)
@@ -21,10 +21,10 @@ if __name__ == '__main__':
     simulation.ALLOW_VERSION_MISMATCH = True
     #simulation.DEBUG_SAMPLE = 8
     db.init('sqlite:///:memory:')
-    channel = AWGNC(3, code.rate, seed=8374, q=3)
+    channel = AWGNC(0, code.rate, seed=8374, q=3)
     simulator = Simulator(code, channel, [decTE], 'ternary')
     simulator.maxSamples = 1000
-    simulator.maxErrors = 100
+    simulator.maxErrors = 1000
     simulator.wordSeed = 1337
     simulator.outputInterval = 1
     simulator.dbStoreTimeInterval = 10
