@@ -25,7 +25,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
 
     cdef list Nj, hj, xj, xvars
     cdef object timer
-    cdef gu.Model model
+    cdef public gu.Model model
     cdef double[:,:] xVals, xjVals
     cdef np.ndarray psiPlus, psiMinus
     cdef np.int_t[:,:] matrix
@@ -153,7 +153,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     iMinusV = psiMinus[i]
                 else:
                     jMinus = i
-                    jPlusV = psiMinus[i]
+                    jMinusV = psiMinus[i]
         if Psi < 2 - 1e-12 and eta % 3 == 2:
             cut = True
         elif Psi < 2 - 1e-12:
@@ -201,6 +201,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i+1] = 2
                     #lhs += xj[i, 1] + 2*xj[i, 2]
             self.model.fastAddConstr(theta[:2*d], self.xj[j], gu.GRB.LESS_EQUAL, kappa)
+            #self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             anyCut = True
             self._stats['cuts'] += 1
 
@@ -248,7 +249,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     iMinusV = psiMinus[i]
                 else:
                     jMinus = i
-                    jPlusV = psiMinus[i]
+                    jMinusV = psiMinus[i]
         if Psi < 2 - 1e-12 and eta % 3 == 2:
             cut = True
         elif Psi < 2 - 1e-12:
@@ -296,6 +297,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i+1] = 1
                     #lhs += 2*xj[i, 1] + xj[i, 2]
             self.model.fastAddConstr(theta[:2*d], self.xj[j], gu.GRB.LESS_EQUAL, kappa)
+            #self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             self._stats['cuts'] += 1
             anyCut = True
         return anyCut
