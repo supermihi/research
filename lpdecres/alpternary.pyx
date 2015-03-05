@@ -30,7 +30,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
     cdef np.ndarray psiPlus, psiMinus
     cdef np.int_t[:,:] matrix
     cdef np.int_t[:] k
-    cdef int[:] theta
+    cdef double[:] theta
     cdef object[:, :] x
 
     def __init__(self, code):
@@ -76,7 +76,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         self.psiMinus = np.empty(code.blocklength)
         self.xjVals = np.empty((code.blocklength, 3))
         self.k = np.empty(code.blocklength, dtype=np.int)
-        self.theta = np.empty(2*code.blocklength, dtype=np.intc)
+        self.theta = np.empty(2*code.blocklength, dtype=np.double)
 
     def setStats(self, stats):
         for stat in 'cuts', 'totalLPs', 'simplexIters', 'optTime':
@@ -84,7 +84,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                 stats[stat] = 0
         Decoder.setStats(self, stats)
 
-    cdef bint cutSearch(self, int j):
+    cdef int cutSearch(self, int j) except -1:
         cdef:
             np.intp_t[:] Nj = self.Nj[j]
             np.int_t[:] hj = self.hj[j]
@@ -99,7 +99,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
             double a, b, Psi
             int eta, kSum, kappa
             bint cut=False, anyCut=False
-            int[:] theta = self.theta
+            double[:] theta = self.theta
             double iMinusV, jMinusV, iPlusV, jPlusV
         for i in range(d):
             if hj[i] == 1:
@@ -200,7 +200,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 1
                     theta[2*i+1] = 2
                     #lhs += xj[i, 1] + 2*xj[i, 2]
-            self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
+            self.model.fastAddConstr(theta[:2*d], self.xj[j], gu.GRB.LESS_EQUAL, kappa)
             anyCut = True
             self._stats['cuts'] += 1
 
@@ -295,7 +295,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 2
                     theta[2*i+1] = 1
                     #lhs += 2*xj[i, 1] + xj[i, 2]
-            self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
+            self.model.fastAddConstr(theta[:2*d], self.xj[j], gu.GRB.LESS_EQUAL, kappa)
             self._stats['cuts'] += 1
             anyCut = True
         return anyCut
@@ -330,8 +330,8 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                 for i in range(self.code.blocklength):
                     self.solution[i] = 0
                     for j in (1, 2):
-                        if xVals[i, j] > 1e-3:
-                            if self.solution[i] != 0 or xVals[i, j] < 1 - 1e-3:
+                        if xVals[i, j] > 1e-5:
+                            if self.solution[i] != 0 or xVals[i, j] < 1 - 1e-5:
                                 self.mlCertificate = self.foundCodeword = False
                                 self.solution[:] = .5  # error
                                 return
