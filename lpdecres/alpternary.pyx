@@ -23,14 +23,15 @@ cdef double inf = np.inf
 
 cdef class AdaptiveTernaryLPDecoder(Decoder):
 
-    cdef list Nj, hj, xj, xvars
+    cdef list Nj, hj, xvars
+    cdef int[:,::1] xj
     cdef object timer
     cdef public gu.Model model
-    cdef double[:,:] xVals, xjVals
+    cdef double[:,::1] xVals, xjVals
     cdef np.ndarray psiPlus, psiMinus
     cdef np.int_t[:,:] matrix
-    cdef np.int_t[:] k
-    cdef double[:] theta
+    cdef int[::1] k
+    cdef double[::1] theta
     cdef object[:, :] x
 
     def __init__(self, code):
@@ -55,27 +56,28 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         self.model.update()
         self.Nj = []
         self.hj = []
-        self.xj = []
+        self.xj = np.empty((self.matrix.shape[0], 2*code.blocklength), dtype=np.intc)
 
         self.timer = Timer()
-        for row in code.parityCheckMatrix:
+        for j, row in enumerate(code.parityCheckMatrix):
             Nj = np.flatnonzero(row)
             self.Nj.append(Nj)
             hj = row[Nj]
             self.hj.append(hj)
             d = Nj.size
-            xj = []
             for i in range(d):
                 if hj[i] == 1:
-                    xj += [self.x[Nj[i], 1], self.x[Nj[i], 2]]
+                    self.xj[j, 2*i] = 2*Nj[i]
+                    self.xj[j, 2*i+1] = 2*Nj[i] + 1
                 else:
-                    xj += [self.x[Nj[i], 2], self.x[Nj[i], 1]]
-            self.xj.append(xj)
+                    self.xj[j, 2*i] = 2*Nj[i] + 1
+                    self.xj[j, 2*i+1] = 2*Nj[i]
+                    #xj += [self.x[Nj[i], 2], self.x[Nj[i], 1]]
         self.xVals = np.empty((code.blocklength, 3))
         self.psiPlus = np.empty(code.blocklength)
         self.psiMinus = np.empty(code.blocklength)
         self.xjVals = np.empty((code.blocklength, 3))
-        self.k = np.empty(code.blocklength, dtype=np.int)
+        self.k = np.empty(code.blocklength, dtype=np.intc)
         self.theta = np.empty(2*code.blocklength, dtype=np.double)
 
     def setStats(self, stats):
@@ -86,20 +88,20 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
 
     cdef int cutSearch(self, int j) except -1:
         cdef:
-            np.intp_t[:] Nj = self.Nj[j]
-            np.int_t[:] hj = self.hj[j]
+            np.intp_t[::1] Nj = self.Nj[j]
+            np.int_t[::1] hj = self.hj[j]
             int d = Nj.size
-            double[:,:] xjVals = self.xjVals
-            double[:,:] xVals = self.xVals
+            double[:,::1] xjVals = self.xjVals
+            double[:,::1] xVals = self.xVals
             int i, iPlus, jPlus, iMinus, jMinus
-            np.int_t[:] k = self.k
+            int[::1] k = self.k
             np.ndarray[dtype=double, ndim=1] psiMinus = self.psiMinus
             np.ndarray[dtype=double, ndim=1] psiPlus = self.psiPlus
             np.intp_t[:] argsPlus, argsMinus
             double a, b, Psi
             int eta, kSum, kappa
             bint cut=False, anyCut=False
-            double[:] theta = self.theta
+            double[::1] theta = self.theta
             double iMinusV, jMinusV, iPlusV, jPlusV
         for i in range(d):
             if hj[i] == 1:
@@ -200,11 +202,10 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 1
                     theta[2*i+1] = 2
                     #lhs += xj[i, 1] + 2*xj[i, 2]
-            self.model.fastAddConstr(theta[:2*d], self.xj[j], gu.GRB.LESS_EQUAL, kappa)
+            self.model.fastAddConstr2(theta[:2*d], self.xj[j,:2*d], gu.GRB.LESS_EQUAL, kappa)
             #self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             anyCut = True
             self._stats['cuts'] += 1
-
         # Theta 2 case
         Psi = 0
         eta = 0
@@ -296,7 +297,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 2
                     theta[2*i+1] = 1
                     #lhs += 2*xj[i, 1] + xj[i, 2]
-            self.model.fastAddConstr(theta[:2*d], self.xj[j], gu.GRB.LESS_EQUAL, kappa)
+            self.model.fastAddConstr2(theta[:2*d], self.xj[j,:2*d], gu.GRB.LESS_EQUAL, kappa)
             #self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             self._stats['cuts'] += 1
             anyCut = True
@@ -307,7 +308,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         cdef int i, j
         cdef bint cutAdded
         cdef double[:, :] xVals = self.xVals
-        self.model.setObjective(gu.LinExpr(self.llrs, self.xvars))
+        self.model.fastSetObjective(0, 2*self.code.blocklength, self.llrs)
         for constr in self.model.getConstrs():
             if constr.ConstrName[0] != 'S':
                 self.model.remove(constr)
@@ -323,8 +324,8 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
             cutAdded = False
             # fill self.xVals
             for i in range(self.code.blocklength):
-                xVals[i, 1] = self.x[i, 1].X
-                xVals[i, 2] = self.x[i, 2].X
+                xVals[i, 1] = (<gu.Var>self.x[i, 1]).X
+                xVals[i, 2] = (<gu.Var>self.x[i, 2]).X
             for j in range(self.matrix.shape[0]):
                 cutAdded |= self.cutSearch(j)
             if not cutAdded:
