@@ -36,7 +36,7 @@ cdef class AdaptivePolarLPDecoder(Decoder):
     not documented yet
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, initWithSparseLP, sparseRPC, allZero
+    cdef public bint removeAboveAverageSlack, keepCuts, initWithSparseLP, sparseRPC
     cdef int nrFixedConstraints, solveCalls
     cdef public double minCutoff
     cdef public int removeInactive, maxRPCrounds
@@ -59,7 +59,6 @@ cdef class AdaptivePolarLPDecoder(Decoder):
         self.keepCuts = params.get('keepCuts', False)
         self.initWithSparseLP = params.get('initWithSparseLP', True)
         self.sparseRPC = params.get('sparseRPC', False)
-        self.allZero = params.get('allZero', False)
         self.n = code.n
         self.N = code.blocklength
         self.model = g.Model('PolarALP')
@@ -77,7 +76,7 @@ cdef class AdaptivePolarLPDecoder(Decoder):
 
         self.model.update()
         if self.initWithSparseLP:
-            A, b = feldmanInequalities(sparseH, fundamentalCone=self.allZero)
+            A, b = feldmanInequalities(sparseH)
             for i in range(len(b)):
                 self.model.addConstr(g.LinExpr(A[i], vars), g.GRB_LESS_EQUAL, b[i])
             self.model.update()
@@ -150,7 +149,7 @@ cdef class AdaptivePolarLPDecoder(Decoder):
                 # inequality violated -> insert
                 inserted += 1
                 self.model.fastAddConstr2(setV[:Njsize], Nj[:Njsize], b'<', setVsize - 1)
-            if originalHmat and vSum < 1-1e-5:
+            elif originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
                 #  have a codeword although this method may return 0
