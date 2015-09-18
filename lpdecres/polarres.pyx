@@ -23,7 +23,7 @@ import gurobimh as g
 cimport gurobimh as g
 
 
-from lpdec.mod2la cimport gaussianElimination
+from lpdec.gfqla cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
 from lpdec.codes.polar import PolarCode
@@ -36,7 +36,7 @@ cdef class AdaptivePolarLPDecoder(Decoder):
     not documented yet
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, initWithSparseLP, sparseRPC
+    cdef public bint removeAboveAverageSlack, keepCuts, initWithSparseLP, sparseRPC, sparsifyGraph
     cdef int nrFixedConstraints, solveCalls
     cdef public double minCutoff
     cdef public int removeInactive, maxRPCrounds
@@ -59,6 +59,7 @@ cdef class AdaptivePolarLPDecoder(Decoder):
         self.keepCuts = params.get('keepCuts', False)
         self.initWithSparseLP = params.get('initWithSparseLP', True)
         self.sparseRPC = params.get('sparseRPC', False)
+        self.sparsifyGraph = params.get('sparsifyGraph', True)
         self.n = code.n
         self.N = code.blocklength
         self.model = g.Model('PolarALP')
@@ -68,7 +69,8 @@ cdef class AdaptivePolarLPDecoder(Decoder):
         for i in range(self.N):
             vars.append(self.model.addVar(0, 1, 0, g.GRB_CONTINUOUS, name='x{}'.format(i)))
         fg = code.factorGraph()
-        fg.sparsify()
+        if self.sparsifyGraph:
+            fg.sparsify()
         sparseH = fg.parityCheckMatrix().copy()
         if self.initWithSparseLP or self.sparseRPC:
             for i in range(self.N, len(fg.varNodes)):
@@ -83,7 +85,6 @@ cdef class AdaptivePolarLPDecoder(Decoder):
         self.nrFixedConstraints = self.model.NumConstrs
         # initialize various structures
         self.hmat = sparseH if self.sparseRPC else code.parityCheckMatrix
-        print(sparseH)
         self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
         self.newSolution = np.empty(self.hmat.shape[1])
         self.longSolution = np.empty(self.hmat.shape[1])
@@ -314,5 +315,7 @@ cdef class AdaptivePolarLPDecoder(Decoder):
             params['keepCuts'] = True
         if not self.initWithSparseLP:
             params['initWithSparseLP'] = False
+        if not self.sparsifyGraph:
+            params['sparsifyGraph'] = False
         params['name'] = self.name
         return params
