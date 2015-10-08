@@ -3,6 +3,7 @@
 # cython: nonecheck=False
 # cython: cdivision=False
 # cython: wraparound=False
+# cython: language_level=3
 # distutils: libraries = [gurobi60]
 # Copyright 2015 Michael Helmling
 #
@@ -10,6 +11,7 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
+from __future__ import division, unicode_literals
 from collections import OrderedDict
 import numpy as np
 cimport numpy as np
@@ -52,7 +54,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         self.model.update()
         for i in range(self.code.blocklength):
             self.model.addConstr(self.x[i, 1] + self.x[i, 2], gu.GRB.LESS_EQUAL, 1,
-                                 name='S{}'.format(i))
+                                 name=unicode('S{}').format(i))
         self.model.update()
         self.Nj = []
         self.hj = []
@@ -157,6 +159,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     jMinus = i
                     jMinusV = psiMinus[i]
         if Psi < 2 - 1e-12 and eta % 3 == 2:
+            print('cut1', j)
             cut = True
         elif Psi < 2 - 1e-12:
             # argsPlus = np.argsort(psiPlus[:d])
@@ -182,6 +185,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     k[jPlus] += 1
                     Psi += psiPlus[iPlus] + psiPlus[jPlus]
             if Psi < 2 - 1e-12:
+                print('cut2', j)
                 cut = True
         if cut:
             kSum = 0
@@ -253,6 +257,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     jMinusV = psiMinus[i]
         if Psi < 2 - 1e-12 and eta % 3 == 2:
             cut = True
+            print('cut3', j)
         elif Psi < 2 - 1e-12:
             # argsPlus = np.argsort(psiPlus[:d])
             # argsMinus = np.argsort(psiMinus[:d])
@@ -277,6 +282,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     k[jPlus] += 1
                     Psi += psiPlus[iPlus] + psiPlus[jPlus]
             if Psi < 2 - 1e-12:
+                print('cut4', j)
                 cut = True
         if cut:
             kSum = 0
@@ -309,9 +315,8 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
         cdef bint cutAdded
         cdef double[:, :] xVals = self.xVals
         self.model.fastSetObjective(0, 2*self.code.blocklength, self.llrs)
-        for constr in self.model.getConstrs():
-            if constr.ConstrName[0] != 'S':
-                self.model.remove(constr)
+        for constr in self.model.getConstrs()[self.code.blocklength:]:
+            self.model.remove(constr)
         self.mlCertificate = self.foundCodeword = True
         while True:
             self._stats['totalLPs'] += 1

@@ -2,18 +2,44 @@ __author__ = 'michael'
 
 from lpdec.codes.nonbinary import *
 import numpy as np
-
+from lpdecres.nonbinary import BuildingBlockClass
 if __name__ == '__main__':
-    q = 3
-    cws = []
-    for i in range(1, q):
-        cws.append(binaryEmbedding([i, 0, q-i], q))
-        cws.append(binaryEmbedding([i, q-i, 0], q))
-    for i in range(1, (q-1)//2+1):
-        cws.append(binaryEmbedding([i, i, q-2*i], q))
-        print(binaryEmbedding([i, i, q-2*i], q))
-    for i in range((q-1)//2, q):
-        cws.append(binaryEmbedding([0, i, q-i], q))
-    mat = np.array(cws)
-    print(mat)
-    print(np.linalg.matrix_rank(mat))
+
+    for shifts in [0,1,1,0,0,1,0], [0,1,0,1,0,0,0], [0,1,0,0,0,0,0], [0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0], [0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0]:
+        bb = BuildingBlockClass(len(shifts), shifts)
+        print('sigma={}'.format(bb.sigma))
+        q = bb.q
+        sigma = bb.sigma
+        cws = []
+        for i in range(1, q):
+            cws.append([i, 0, q-i])
+            cws.append([0, i, q-i])
+        for j in range(2, q):
+            if j == sigma:
+                continue
+            cws.append([-j, j-sigma, sigma])
+        countA = countB = 0
+        for j in range(2, q-2):
+
+            for i in range(2, min(q-j, j+1)):
+                assert i + j < q
+                if bb.shifts[i] == 0 and bb.shifts[j] == 0 and bb.shifts[i+j] == 0:
+                    cws.append([-i, -j, i+j])
+                    print('(',i,j,')', end=',')
+                    countA +=1
+                # if bb.shifts[i] + bb.shifts[j] == 1 and bb.shifts[i+j] == 1:
+                #     cws.append([-i, -j, i+j])
+            for i in range(q-j, q-2):
+                if bb.shifts[i] == bb.shifts[j] == 0 and bb.shifts[i+j-q] == 1:
+                    cws.append([-i, -j, i+j])
+                    print('(',i,j,')', end=',')
+                    countB += 1
+                pass
+        print(countA, countB)
+        print()
+        mat = np.array([flanaganEmbedding(cw, q) for cw in cws])
+
+        #print(mat)
+        rank = np.linalg.matrix_rank(mat)
+        print(rank)
+        #print(rank == (q-1)*3-1)

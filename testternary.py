@@ -11,18 +11,25 @@ if __name__ == '__main__':
     code = TernaryGolayCode()
     code = NonbinaryLinearBlockCode(
         parityCheckMatrix='~/papers/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
-    print(code.parityCheckMatrix)
+    code = TernaryGolayCode()
+    decoders = []
     decFL = StaticLPDecoder(code, ml=False)
     print('decFL')
+    decoders.append(decFL)
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     decTE = AdaptiveTernaryLPDecoder(code)
     print('decTE')
+    decoders.append(decTE)
+    from lpdecres.alpnonbinary import NonbinaryALPDecoder
+    decNew = NonbinaryALPDecoder(code)
+    print('decNew')
+    decoders.append(decNew)
     simulation.ALLOW_DIRTY_VERSION = True
     simulation.ALLOW_VERSION_MISMATCH = True
-    #simulation.DEBUG_SAMPLE = 8
+    simulation.DEBUG_SAMPLE = 1
     db.init('sqlite:///:memory:')
-    channel = AWGNC(0, code.rate, seed=8374, q=3)
-    simulator = Simulator(code, channel, [decTE], 'ternary')
+    channel = AWGNC(5, code.rate, seed=8374, q=3)
+    simulator = Simulator(code, channel, decoders, 'ternary')
     simulator.maxSamples = 1000
     simulator.maxErrors = 1000
     simulator.wordSeed = 1337

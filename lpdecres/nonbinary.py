@@ -5,13 +5,21 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-import itertools
+import itertools, functools
+import fractions
 import numpy as np
 import sys
+from lpdec.codes.nonbinary import flanaganEmbedding
+
 
 class BuildingBlockClass:
 
-    def __init__(self, q, shifts):
+    """Building block class for non-binary LP decoding valid inequalities."""
+
+    def __init__(self, shifts):
+        if isinstance(shifts, str):
+            shifts = list(map(int, shifts))
+        q = len(shifts)
         self.q = q
         self.shifts = shifts[:]
         self.vals = np.empty((q, q), dtype=np.int)
@@ -24,7 +32,6 @@ class BuildingBlockClass:
         for j in range(1, self.q):
             for i in range(self.q):
                 self.vals[j, i] = self.vals[0, (i + j) % self.q] - self.vals[0, j]
-                #self.vals[j, (i - j) % self.q] = self.vals[0, i] - self.vals[0, j]
 
 
     def isValid(self):
@@ -61,18 +68,49 @@ class BuildingBlockClass:
             return False
 
     def isSymmetric(self):
+        q = self.q
         sortedVals = sorted(self.vals[0, :])
         maxVal = sortedVals[-1]
+        if q == 2:
+            return True
         if maxVal % 2 == 1:
             return False
-        for i in range(self.q//2):
+        for i in range(q//2):
             if sortedVals[i] != maxVal - sortedVals[q-i-1]:
                 #print(i, sortedVals[i], sortedVals[q-i-1])
                 return False
-        if sortedVals[self.q//2] != maxVal // 2:
+        if sortedVals[q//2] != maxVal // 2:
             #print(':(')
             return False
         return True
+
+    def isDoublySymmetric(self):
+        if self.q == 2:
+            return False
+        Wproj = sorted(self.vals[0, :])[1:-1]
+        maxVal = Wproj[-1] // 2
+        cand = []
+        for i in Wproj:
+            if i <= maxVal:
+                cand.append(i)
+            else:
+                break
+        if len(cand) < (self.q - 3) // 2:
+            return False
+        for size in range((self.q - 3) // 2, len(cand) + 1):
+            for subset in itertools.combinations(cand, size):
+                isDS = True
+                for i in subset:
+                    if Wproj[-1] - i not in Wproj:
+                        isDS = False
+                        break
+                if isDS:
+                    #print('DS: {}'.format(c))
+                    # print('vals={}'.format(self.vals[0,:]))
+                    # print('Wproj={}'.format(Wproj))
+                    # print('subset={}'.format(subset))
+                    return True
+
 
     def dominatesSingle(self, other):
         assert other.q == self.q
@@ -109,10 +147,10 @@ class BuildingBlockClass:
             model.addConstr(g.LinExpr(row, vars) >= b[i])
         model.update()
         model.optimize()
-        if model.status != g.GRB.INFEASIBLE:
-            print(self.vals)
-            print([o.shifts for o in others])
-            print([v.X for v in vars])
+        # if model.status != g.GRB.INFEASIBLE:
+        #     print(self.vals)
+        #     print([o.shifts for o in others])
+        #     print([v.X for v in vars])
         return model.Status != g.GRB.INFEASIBLE
 
     def embedConstant(self, zeta):
@@ -127,22 +165,13 @@ class BuildingBlockClass:
         return ret
 
     def hasBadGcd(self):
-        for divisor in range(2, self.q-1):
-            if np.all(self.vals[0] % divisor == 0):
-                return True
-        return False
+        return functools.reduce(fractions.gcd, self.vals[0]) != 1
 
-    def hasFullRank(self, d=3):
+    def rankOfTightCodewords(self, d=3):
         nCols = d*(self.q-1)
         nRows = (d-1)*(self.q-1)
-        M = np.zeros((nRows, nCols))
-        for i in range(nRows):
-            M[i, i] = 1
-        for k in range(d-1):
-            for i in range(self.q - 1):
-                M[i+(q-1)*k, (nCols-1) - i] = 1
         cws = []
-        for firsts in itertools.product(list(range(q)), repeat=d-1):
+        for firsts in itertools.product(list(range(self.q)), repeat=d-1):
             last = -sum(firsts) % self.q
             if last == 0:
                 continue
@@ -156,35 +185,97 @@ class BuildingBlockClass:
                 line.extend(self.embedFlanagan(last))
                 cws.append(line)
         if len(cws) == 0:
-            return False
-        print(M)
-        Mplus = np.array(cws, dtype=np.double)
-        #M = np.concatenate((M, Mplus), axis=0)
-        M = Mplus
-        # print(M)
-        rank = np.linalg.matrix_rank(M)
-        if rank == d*(q-1) - 1:
+            return 0
+        M = np.array(cws, dtype=np.double)
+        return np.linalg.matrix_rank(M)
+
+    def testRank(self):
+        cws = []
+        q = self.q
+        sigma = self.sigma
+        for i in range(1, q):
+            cws.append([i, 0, q-i])
+            cws.append([0, i, q-i])
+        for j in range(1, q):
+            if j == sigma:
+                continue
+            cws.append([-j, j-sigma, sigma])
+        for j in range(2, q-1):
+            if self.shifts[j] == 1:
+                continue
+            for i in range(2, j+1):
+                if self.shifts[i] == 1:
+                    continue
+                if i + j == q:
+                    continue
+                if (i+j < q and self.shifts[i+j] == 0) or (i+j >= q and self.shifts[i+j-q] == 1):
+                    cws.append([-i, -j, (i + j) % q])
+        mat = np.array([flanaganEmbedding(cw, q) for cw in cws])
+        return np.linalg.matrix_rank(mat)
+
+    def hasFullRank(self, d=3):
+        rank = self.rankOfTightCodewords(d)
+        if rank == d*(self.q-1) - 1:
             return True
         else:
-            print('rank=', rank)
+            #print('rank=', rank)
             return False
+
+
+    @classmethod
+    def validFacetDefining(cls, q):
+        """Return all valid facet-defining unique classes for given `q`."""
+        classes = []
+        for shifts in sorted(itertools.product((0,1), repeat=q-1), key=sum):
+            if shifts == (1,0) * ((q-1)//2):
+                continue  # redundant class 0101010...
+            c = BuildingBlockClass((0,) + shifts)
+            if c.isSymmetric() and c.isValid() and c.hasFullRank():
+                classes.append(c)
+        return classes
 
 
     def __str__(self):
         return str(self.shifts)
 
 
-
 if __name__ == '__main__':
-    for q in [2,3,5,7,11,13,17,19,23,29]:
-        count = 0
+    # c = BuildingBlockClass('0110000')
+    # c = BuildingBlockClass('0010000')
+    # print(c.rankOfTightCodewords(5))
+    # sys.exit(0)
+    import pprint
+    for q in [2,3,5,7,11,13,17]:
+        count = dict(symmetric=0, valid=0, unique=0, doublySymmetric=0, facet=0)
         for shifts in sorted(itertools.product((0,1), repeat=q-1), key=sum):
-            c = BuildingBlockClass(q, (0,) + shifts)
+            c = BuildingBlockClass((0,) + shifts)
             if c.isValid():
-                count += 1
-                if count % 100 == 0:
-                    print(count)
-        print('q={}: {} valid classes'.format(q, count))
+                #print('{} is valid'.format(c))
+                count['valid'] += 1
+                if count['valid'] % 100 == 0:
+                    print(count['valid'])
+                if c.hasBadGcd():
+                    pass # only m=0101010...
+                    #print('bad gcd: {}'.format(c))
+                else:
+                    count['unique'] += 1
+                    if c.hasFullRank(3):
+                        count['facet'] += 1
+                        if not c.isSymmetric():
+                            raise Exception()
+                    if c.isSymmetric():
+                        print('sym', c, 'testrank', c.testRank())
+                        count['symmetric'] += 1
+                        if not c.shifts[c.sigma-1] == 0:
+                            print('omg', c)
+                        if not (c.shifts[(c.sigma-1) % q] == 0 or c.shifts[(c.sigma-2) % q] == 0):
+                            print('wtf', c)
+                        if c.isDoublySymmetric():
+                            count['doublySymmetric'] += 1
+            # elif c.isSymmetric():
+            #     print('!sym', c)
+        print('q={}'.format(q))
+        pprint.pprint(count)
     sys.exit(0)
     q = 13
     classes = set()
@@ -210,7 +301,7 @@ if __name__ == '__main__':
         #     print("{} dominates {}".format(cls, c))
         # elif c.isDominatedBy(classes):
         #     print('strong domination {}'.format(c))
-        elif not c.hasFullRank(6):
+        elif not c.hasFullRank(3):
             print('{} does not have full rank'.format(c))
         else:
             print('{} ok'.format(c))
