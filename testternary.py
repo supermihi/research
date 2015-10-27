@@ -10,7 +10,7 @@ if __name__ == '__main__':
     from lpdec.imports import *
     code = TernaryGolayCode()
     code = NonbinaryLinearBlockCode(
-        parityCheckMatrix='~/papers/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
+        parityCheckMatrix='~/UNI/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
     code = TernaryGolayCode()
     decoders = []
     decFL = StaticLPDecoder(code, ml=False)
@@ -26,11 +26,11 @@ if __name__ == '__main__':
     decoders.append(decNew)
     simulation.ALLOW_DIRTY_VERSION = True
     simulation.ALLOW_VERSION_MISMATCH = True
-    simulation.DEBUG_SAMPLE = 1
+    # simulation.DEBUG_SAMPLE = 1
     db.init('sqlite:///:memory:')
-    channel = AWGNC(5, code.rate, seed=8374, q=3)
+    channel = AWGNC(2, code.rate, seed=8374, q=3)
     simulator = Simulator(code, channel, decoders, 'ternary')
-    simulator.maxSamples = 1000
+    simulator.maxSamples = 50
     simulator.maxErrors = 1000
     simulator.wordSeed = 1337
     simulator.outputInterval = 1

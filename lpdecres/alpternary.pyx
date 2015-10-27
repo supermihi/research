@@ -159,7 +159,6 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     jMinus = i
                     jMinusV = psiMinus[i]
         if Psi < 2 - 1e-12 and eta % 3 == 2:
-            print('cut1', j)
             cut = True
         elif Psi < 2 - 1e-12:
             # argsPlus = np.argsort(psiPlus[:d])
@@ -185,7 +184,6 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     k[jPlus] += 1
                     Psi += psiPlus[iPlus] + psiPlus[jPlus]
             if Psi < 2 - 1e-12:
-                print('cut2', j)
                 cut = True
         if cut:
             kSum = 0
@@ -257,7 +255,6 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     jMinusV = psiMinus[i]
         if Psi < 2 - 1e-12 and eta % 3 == 2:
             cut = True
-            print('cut3', j)
         elif Psi < 2 - 1e-12:
             # argsPlus = np.argsort(psiPlus[:d])
             # argsMinus = np.argsort(psiMinus[:d])
@@ -282,7 +279,6 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     k[jPlus] += 1
                     Psi += psiPlus[iPlus] + psiPlus[jPlus]
             if Psi < 2 - 1e-12:
-                print('cut4', j)
                 cut = True
         if cut:
             kSum = 0

@@ -18,12 +18,10 @@ class NonbinaryALPDecoder(GurobiDecoder):
     """Adaptive LP decoder for non-binary codes.
     """
 
-
     def __init__(self, code, name=None, gurobiParams=None, gurobiVersion=None):
         if name is None:
             name = 'NonbinaryALPDecoder'
         GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion, integer=False)
-
 
         self.matrix = code.parityCheckMatrix
         q = self.q = code.q
@@ -45,7 +43,6 @@ class NonbinaryALPDecoder(GurobiDecoder):
         # inverse elements in \F_q
         self.inv = np.array([0] + [gfqla.inv(i, q) for i in range(1, q)])
 
-
         self.permutations = np.zeros((q, q), dtype=np.int)
         for j in range(1, q):
             for i in range(q):
@@ -55,7 +52,7 @@ class NonbinaryALPDecoder(GurobiDecoder):
             self.Nj.append(Nj)
             hj = row[Nj]
             self.hj.append(hj)
-        self.xVals = np.empty((code.blocklength, q))
+        self.xVals = np.zeros((code.blocklength, q))
 
     def setStats(self, stats):
         for stat in 'cuts', 'totalLPs', 'simplexIters', 'optTime':
@@ -113,55 +110,73 @@ class NonbinaryALPDecoder(GurobiDecoder):
         for i in range(d):
             for j in range(1, q):
                 rotatedXvals[i, j] = self.xVals[Nj[i], self.permutations[self.inv[phi*hj[i] % q], j]]
-        # compute the v^j(x_i) and w_i^j
+        # compute the v^j(x_i)
         v = np.empty((d, q))
-        w = np.empty((d, q))
         for i in range(d):
             for j in range(q):
                 v[i, j] = t[0, sigma] - t[0, j] - np.dot(t[j], rotatedXvals[i])
-        for i in range(d):
-            for j in range(q):
-                w[i, j] = v[i, 0] - v[i, j]
+        # compute unconstrained solution and check shortcutting conditions
         thetaHat = np.empty(d)
-        VkTheta = np.zeros(q, dtype=np.int)  # entries \abs{V_k^\theta}
+        sumKhat = 0
         PsiVal = 0
         for i in range(d):
-            khat = np.argmax(w[i])
+            khat = np.argmin(v[i])
             thetaHat[i] = khat
-            VkTheta[khat] += 1
+            sumKhat += khat
             PsiVal += v[i, khat]
-
-        if PsiVal >= t[0, sigma]:
-            return False
-        eta = sum(VkTheta[k]*(sigma-k) for k in range(q)) % q
-        if eta == sigma:
-            self.insertCut(bbClass, thetaHat, Nj, hj, phi)
+        if PsiVal >= t[0, sigma] - 1e-5:
+            return False  # unconstrained solution already too large
+        if sumKhat % q == (d-1)*sigma % q:
+            self.insertCut(bbClass, thetaHat, row, hj, phi)
             return True
-        psiPlus = np.empty((d, q))
-        for i in range(d):
-            for j in range(1, q):
-                psiPlus[i, j] = w[i, thetaHat[i]] - w[i, (thetaHat[i] + j) % q]
-        irplus = -np.ones((d, q), dtype=np.int)
-        for j in range(1, q):
-            irplus[:, j] = np.argsort(psiPlus[:, j])
-        self.minPsiPlusHelper(psiPlus, irplus)
-        print(psiPlus)
-        print(irplus)
+        # start DP approach
+        T = np.empty((d, q))
+        S = np.empty((d, q), dtype=np.int)
+        goalSum = (d-1)*sigma % q
+        for zeta in range(q):
+            T[0, zeta] = v[0, zeta]
+            S[0, zeta] = zeta
+        for i in range(1, d):
+            columnMin = np.inf
+            for zeta in range(q):
+                # if i == d - 1 and zeta != goalSum:
+                #     continue
+                minVal = np.inf
+                minElem = -1
+                for alpha in range(q):
+                    val = v[i, alpha] + T[i-1, (zeta - alpha) % q]
+                    if val < minVal:
+                        minVal = val
+                        minElem = alpha
+                assert minElem != -1
+                T[i, zeta] = minVal
+                S[i, zeta] = minElem
+                columnMin = min(columnMin, minVal)
+            # if columnMin >= t[0, sigma]:
+            #     print('MINMIN')
+            #     return False  # see remark 8, point 3
+        if T[d-1, goalSum] < t[0, sigma] - 1e-5:
+            # found cut
+            thetaHat[d-1] = S[d-1, goalSum]
+            next_ = (goalSum - thetaHat[d-1]) % q
+            for i in range(d-2, -1, -1):
+                thetaHat[i] = S[i, next_]
+                next_ = (next_ - thetaHat[i]) % q
+            self.insertCut(bbClass, thetaHat, row, hj, phi)
+            return True
+        return False
 
-
-
-    def insertCut(self, bbClass, theta, Nj, hj, phi):
-        print('insert')
+    def insertCut(self, bbClass, theta, j, hj, phi):
+        Nj = self.Nj[j]
         d = Nj.size
         q = self.q
-        coeffs = np.zeros((self.code.blocklength,self.q-1))
+        coeffs = np.zeros(self.code.blocklength * (q - 1))
+        lhs = 0
         for i in range(d):
-            tki = bbClass.vals[theta[i, 1:]]
-            coeffs[Nj[i], :] = tki[self.permutations[hj[i]*phi % q, 1:]]
-
-
-
-
+            tki = bbClass.vals[theta[i]]
+            coeffs[(q-1)*Nj[i]:(q-1)*(Nj[i]+1)] = tki[self.permutations[hj[i]*phi % q]][1:]
+        kappa = (d-1)*bbClass.vals[0, bbClass.sigma] - sum(bbClass.vals[0, ki] for ki in theta)
+        self.model.addConstr(gu.LinExpr(coeffs, self.xlist) <= kappa)
 
     def params(self):
         ret = GurobiDecoder.params(self)
