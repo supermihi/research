@@ -66,6 +66,8 @@ class NonbinaryALPDecoder(GurobiDecoder):
         self.S = np.empty((self.code.blocklength, self.q), dtype=np.int)
         self.coeffs = np.empty(self.code.blocklength * (self.q-1))
         self.vars = np.empty(self.code.blocklength * (self.q-1), dtype=np.object)
+        self.Njtmp = np.empty(self.code.blocklength, dtype=np.intp)
+        self.hjtmp = np.empty(self.code.blocklength, dtype=np.int)
 
 
     def setStats(self, stats):
@@ -95,34 +97,42 @@ class NonbinaryALPDecoder(GurobiDecoder):
             for row in range(self.matrix.shape[0]):
                 for bbClass in self.bbClasses:
                     for phi in range(1, self.q):
-                        cutAdded |= self.cutSearch(row, bbClass, phi)
+                        cutAdded |= self.cutSearch(self.hj[row], self.Nj[row], self.hj[row].size, bbClass, phi)
             if not cutAdded:
-                self.mlCertificate = self.foundCodeword = self.readSolution()
-                break
                 Htilde = self.diagonalize()
                 for row in Htilde:
+                    d = self.makeHjNj(row)
                     for bbClass in self.bbClasses:
                         for phi in range(1, self.q):
-                            cutAdded |= self.cutSearchTilde(row, bbClass, phi)
-                self.mlCertificate = self.foundCodeword = self.readSolution()
-                break
+                            cutAdded |= self.cutSearch(self.hjtmp, self.Njtmp, d, bbClass, phi)
+                if not cutAdded:
+                    self.mlCertificate = self.foundCodeword = self.readSolution()
+                    break
 
-    def cutSearch(self, row: int, bbClass: BuildingBlockClass, phi) -> bool:
+    def makeHjNj(self, row):
+        i = 0
+        for j in range(row.size):
+            if row[j] != 0:
+                self.hjtmp[i] = row[j]
+                self.Njtmp[i] = j
+                i += 1
+        return i
+
+    def cutSearch(self, hj, Nj, d, bbClass: BuildingBlockClass, phi) -> bool:
         """Non-binary cut search algorithm.
 
         Parameters
         ----------
-        row : int
-            Row index of parity-check matrix to test.
+        hj : np.int_t[:]
+            Row of parity-check matrix to test.
+        Nj : np.intp_t[:]
+            List of non-zero indices of PCM row.
         bbClass : BuildingBlockClass
             Building block class to separate.
         phi : int from {1,...,q-1}
             Automorphism (permutation).
         """
         q = self.q
-        Nj = self.Nj[row]
-        hj = self.hj[row]
-        d = Nj.size
         t = bbClass.vals
         sigma = bbClass.sigma
         # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
@@ -151,7 +161,7 @@ class NonbinaryALPDecoder(GurobiDecoder):
         if PsiVal >= t[0, sigma] - 1e-5:
             return False  # unconstrained solution already too large
         if sumKhat % q == (d-1)*sigma % q:
-            self.insertCut(bbClass, thetaHat, row, hj, phi)
+            self.insertCut(bbClass, hj, Nj, d, thetaHat, phi)
             return True
         # start DP approach
         T = self.T
@@ -184,13 +194,11 @@ class NonbinaryALPDecoder(GurobiDecoder):
             for i in range(d-2, -1, -1):
                 thetaHat[i] = S[i, next_]
                 next_ = (next_ - thetaHat[i]) % q
-            self.insertCut(bbClass, thetaHat, row, hj, phi)
+            self.insertCut(bbClass, hj, Nj, d, thetaHat, phi)
             return True
         return False
 
-    def insertCut(self, bbClass, theta, j, hj, phi):
-        Nj = self.Nj[j]
-        d = Nj.size
+    def insertCut(self, bbClass, hj, Nj, d, theta, phi):
         q = self.q
         coeffs = self.coeffs
         vars = self.vars
@@ -209,8 +217,11 @@ class NonbinaryALPDecoder(GurobiDecoder):
         """
         import scipy.stats
         from lpdec import gfqla
-        entropies = scipy.stats.entropy(self.xVals.T)
-        sortIndices = np.argsort(-entropies)  # large entropies first
+        # compute hidden 0 xVals
+        self.xVals[:, 0] = 1 - np.sum(self.xVals[:, 1:], 1)
+        entropies = -scipy.stats.entropy(self.xVals.T) # large entropies first
+        #entropies = np.sum(np.abs(self.xVals - 1./self.q), 1)
+        sortIndices = np.argsort(entropies)
         gfqla.gaussianElimination(self.htilde, sortIndices, diagonalize=True, q=self.q)
         return self.htilde
 
