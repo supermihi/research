@@ -24,6 +24,7 @@ class NonbinaryALPDecoder(GurobiDecoder):
         GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion, integer=False)
 
         self.matrix = code.parityCheckMatrix
+        self.htilde = self.matrix.copy()
         q = self.q = code.q
         self.bbClasses = BuildingBlockClass.validFacetDefining(q)
         print('found {} valid classes:'.format(len(self.bbClasses)))
@@ -53,6 +54,19 @@ class NonbinaryALPDecoder(GurobiDecoder):
             hj = row[Nj]
             self.hj.append(hj)
         self.xVals = np.zeros((code.blocklength, q))
+        self.initCutSearchTempArrays()
+
+    def initCutSearchTempArrays(self):
+        self.rotatedXvals = np.empty((self.code.blocklength, self.q))
+        self.v = np.empty((self.code.blocklength, self.q))
+        self.thetaHat = np.empty(self.code.blocklength, dtype=np.int)
+
+        # dynamic programming tables
+        self.T = np.empty((self.code.blocklength, self.q))
+        self.S = np.empty((self.code.blocklength, self.q), dtype=np.int)
+        self.coeffs = np.empty(self.code.blocklength * (self.q-1))
+        self.vars = np.empty(self.code.blocklength * (self.q-1), dtype=np.object)
+
 
     def setStats(self, stats):
         for stat in 'cuts', 'totalLPs', 'simplexIters', 'optTime':
@@ -85,6 +99,13 @@ class NonbinaryALPDecoder(GurobiDecoder):
             if not cutAdded:
                 self.mlCertificate = self.foundCodeword = self.readSolution()
                 break
+                Htilde = self.diagonalize()
+                for row in Htilde:
+                    for bbClass in self.bbClasses:
+                        for phi in range(1, self.q):
+                            cutAdded |= self.cutSearchTilde(row, bbClass, phi)
+                self.mlCertificate = self.foundCodeword = self.readSolution()
+                break
 
     def cutSearch(self, row: int, bbClass: BuildingBlockClass, phi) -> bool:
         """Non-binary cut search algorithm.
@@ -105,33 +126,36 @@ class NonbinaryALPDecoder(GurobiDecoder):
         t = bbClass.vals
         sigma = bbClass.sigma
         # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
-        rotatedXvals = np.empty((d, q))
+        rotatedXvals = self.rotatedXvals
         rotatedXvals[:, 0] = 0
         for i in range(d):
+            phiHjInv = self.inv[phi*hj[i] % q]
             for j in range(1, q):
-                rotatedXvals[i, j] = self.xVals[Nj[i], self.permutations[self.inv[phi*hj[i] % q], j]]
-        # compute the v^j(x_i)
-        v = np.empty((d, q))
-        for i in range(d):
-            for j in range(q):
-                v[i, j] = t[0, sigma] - t[0, j] - np.dot(t[j], rotatedXvals[i])
-        # compute unconstrained solution and check shortcutting conditions
-        thetaHat = np.empty(d)
+                rotatedXvals[i, j] = self.xVals[Nj[i], self.permutations[phiHjInv, j]]
+        # compute the v^j(x_i) and unconstrained solution on-the-fly
+        v = self.v
+        thetaHat = self.thetaHat
         sumKhat = 0
         PsiVal = 0
         for i in range(d):
-            khat = np.argmin(v[i])
-            thetaHat[i] = khat
-            sumKhat += khat
-            PsiVal += v[i, khat]
+            minVi = np.inf
+            for j in range(q):
+                v[i, j] = t[0, sigma] - t[0, j] - np.dot(t[j], rotatedXvals[i])
+                if v[i, j] < minVi:
+                    minVi = v[i, j]
+                    thetaHat[i] = j
+            sumKhat += thetaHat[i]
+            PsiVal += v[i, thetaHat[i]]
+
+        # check shortcutting conditions
         if PsiVal >= t[0, sigma] - 1e-5:
             return False  # unconstrained solution already too large
         if sumKhat % q == (d-1)*sigma % q:
             self.insertCut(bbClass, thetaHat, row, hj, phi)
             return True
         # start DP approach
-        T = np.empty((d, q))
-        S = np.empty((d, q), dtype=np.int)
+        T = self.T
+        S = self.S
         goalSum = (d-1)*sigma % q
         for zeta in range(q):
             T[0, zeta] = v[0, zeta]
@@ -141,17 +165,15 @@ class NonbinaryALPDecoder(GurobiDecoder):
             for zeta in range(q):
                 # if i == d - 1 and zeta != goalSum:
                 #     continue
-                minVal = np.inf
+                T[i, zeta] = np.inf
+                S[i, zeta] = -1
                 minElem = -1
                 for alpha in range(q):
                     val = v[i, alpha] + T[i-1, (zeta - alpha) % q]
-                    if val < minVal:
-                        minVal = val
-                        minElem = alpha
-                assert minElem != -1
-                T[i, zeta] = minVal
-                S[i, zeta] = minElem
-                columnMin = min(columnMin, minVal)
+                    if val < T[i, zeta]:
+                        T[i, zeta] = val
+                        S[i, zeta] = alpha
+                columnMin = min(columnMin, T[i, zeta])
             # if columnMin >= t[0, sigma]:
             #     print('MINMIN')
             #     return False  # see remark 8, point 3
@@ -170,13 +192,28 @@ class NonbinaryALPDecoder(GurobiDecoder):
         Nj = self.Nj[j]
         d = Nj.size
         q = self.q
-        coeffs = np.zeros(self.code.blocklength * (q - 1))
-        lhs = 0
+        coeffs = self.coeffs
+        vars = self.vars
+        kappa = (d-1)*bbClass.vals[0, bbClass.sigma]
         for i in range(d):
             tki = bbClass.vals[theta[i]]
-            coeffs[(q-1)*Nj[i]:(q-1)*(Nj[i]+1)] = tki[self.permutations[hj[i]*phi % q]][1:]
-        kappa = (d-1)*bbClass.vals[0, bbClass.sigma] - sum(bbClass.vals[0, ki] for ki in theta)
-        self.model.addConstr(gu.LinExpr(coeffs, self.xlist) <= kappa)
+            hjPhi = hj[i]*phi % q
+            for j in range(q-1):
+                coeffs[(q-1)*i + j] = tki[self.permutations[hjPhi, j + 1]]
+                vars[(q-1)*i + j] = self.x[Nj[i], j + 1]
+            kappa -= bbClass.vals[0, theta[i]]
+        self.model.addConstr(gu.LinExpr(coeffs[:(q-1)*d], vars[:(q-1)*d]), gu.GRB.LESS_EQUAL, kappa)
+
+    def diagonalize(self):
+        """Perform gaussian elimination on the code's parity-check matrix to search for RPC cuts.
+        """
+        import scipy.stats
+        from lpdec import gfqla
+        entropies = scipy.stats.entropy(self.xVals.T)
+        sortIndices = np.argsort(-entropies)  # large entropies first
+        gfqla.gaussianElimination(self.htilde, sortIndices, diagonalize=True, q=self.q)
+        return self.htilde
+
 
     def params(self):
         ret = GurobiDecoder.params(self)

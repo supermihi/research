@@ -33,7 +33,6 @@ class BuildingBlockClass:
             for i in range(self.q):
                 self.vals[j, i] = self.vals[0, (i + j) % self.q] - self.vals[0, j]
 
-
     def isValid(self):
         """Check if this building block class induces valid inequalities."""
         # qRange = np.arange(1, self.q)
