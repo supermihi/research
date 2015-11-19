@@ -20,21 +20,21 @@ if __name__ == '__main__':
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     decTE = AdaptiveTernaryLPDecoder(code)
     print('decTE')
-    decoders.append(decTE)
+    # decoders.append(decTE)
     from lpdecres.alpnonbinary import NonbinaryALPDecoder
     decNew = NonbinaryALPDecoder(code)
     print('decNew')
     decoders.append(decNew)
     decML = GurobiIPDecoder(code)
     print('decML')
-    decoders.append(decML)
+    # decoders.append(decML)
     simulation.ALLOW_DIRTY_VERSION = True
     simulation.ALLOW_VERSION_MISMATCH = True
     # simulation.DEBUG_SAMPLE = 1
     db.init('sqlite:///:memory:')
     channel = AWGNC(2, code.rate, seed=8374, q=3)
     simulator = Simulator(code, channel, decoders, 'ternary')
-    simulator.maxSamples = 300
+    simulator.maxSamples = 100
     simulator.maxErrors = 1000
     simulator.wordSeed = 1337
     simulator.outputInterval = 1
@@ -42,9 +42,9 @@ if __name__ == '__main__':
     simulator.revealSent = True
     simulator.concurrent = False
     import pstats, cProfile
-    # cProfile.runctx("simulator.run()", globals(), locals(), "Profile.prof")
-    # s = pstats.Stats("Profile.prof")
-    # s.strip_dirs().sort_stats("time").print_stats()
-    simulator.run()
-    for decoder in decoders:
-        pprint.pprint(decoder.stats())
+    cProfile.runctx("simulator.run()", globals(), locals(), "Profile.prof")
+    s = pstats.Stats("Profile.prof")
+    s.strip_dirs().sort_stats("time").print_stats(10)
+    # simulator.run()
+    # for decoder in decoders:
+    #     pprint.pprint(decoder.stats())

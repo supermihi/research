@@ -4,7 +4,7 @@
 # cython: cdivision=True
 # cython: wraparound=False
 # cython: initializedcheck=False
-# distutils: libraries = ["gurobi60"]
+# distutils: libraries = ["gurobi65"]
 #
 # Copyright 2015 Michael Helmling
 #
