@@ -39,7 +39,6 @@ def makeExtensions():
     if '--no-gurobi' in sys.argv:
         extensions = [e for e in extensions if 'gurobi' not in e.libraries]
     else:
-        requirements.append('gurobimh')
         # find library version: library name includes major/minor version information (e.g.
         # libgurobi65.so vs libgurobi60.so). This hack-ish solution parses version information from
         # the C header file.

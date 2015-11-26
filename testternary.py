@@ -15,11 +15,11 @@ if __name__ == '__main__':
     #code = TernaryGolayCode()
     code = NonbinaryLinearBlockCode(parityCheckMatrix='Nonbinary_PCM_GF5_155_93.txt')
     decoders = []
-    decFL = StaticLPDecoder(code, ml=False)
+    # decFL = StaticLPDecoder(code, ml=False)
     print('decFL')
-    decoders.append(decFL)
-    decCas = StaticLPDecoder(code, cascade=True, ml=False)
-    decoders.append(decCas)
+    # decoders.append(decFL)
+    # decCas = StaticLPDecoder(code, cascade=True, ml=False)
+    # decoders.append(decCas)
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     if code.q == 3:
         decTE = AdaptiveTernaryLPDecoder(code)

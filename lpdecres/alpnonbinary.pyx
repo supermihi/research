@@ -317,7 +317,7 @@ cdef class NonbinaryALPDecoder(Decoder):
             self.coeffs[i] = 0
             for j in range(self.q):
                 if self.useEntropy:
-                    self.coeffs[i] -= self.xVals[i, j]*log2(self.xVals[i, j])
+                    self.coeffs[i] += self.xVals[i, j]*log2(self.xVals[i, j])
                 else:
                     self.coeffs[i] += fabs(self.xVals[i, j] - 1./self.q)
         sortIndices = np.argsort(self.coeffs[:self.blocklength])
