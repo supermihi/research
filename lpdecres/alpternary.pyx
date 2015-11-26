@@ -3,6 +3,7 @@
 # cython: nonecheck=False
 # cython: cdivision=False
 # cython: wraparound=False
+# cython: initializedcheck=False
 # cython: language_level=3
 # distutils: libraries = [gurobi65]
 # Copyright 2015 Michael Helmling

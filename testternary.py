@@ -13,26 +13,34 @@ if __name__ == '__main__':
     code = NonbinaryLinearBlockCode(
         parityCheckMatrix='~/UNI/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
     #code = TernaryGolayCode()
+    code = NonbinaryLinearBlockCode(parityCheckMatrix='Nonbinary_PCM_GF5_155_93.txt')
     decoders = []
-    # decFL = StaticLPDecoder(code, ml=False)
-    # print('decFL')
-    # decoders.append(decFL)
+    decFL = StaticLPDecoder(code, ml=False)
+    print('decFL')
+    decoders.append(decFL)
+    decCas = StaticLPDecoder(code, cascade=True, ml=False)
+    decoders.append(decCas)
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
-    decTE = AdaptiveTernaryLPDecoder(code)
-    print('decTE')
-    # decoders.append(decTE)
+    if code.q == 3:
+        decTE = AdaptiveTernaryLPDecoder(code)
+        print('decTE')
+        decoders.append(decTE)
     from lpdecres.alpnonbinary import NonbinaryALPDecoder
-    decNew = NonbinaryALPDecoder(code)
-    print('decNew')
+    decNew = NonbinaryALPDecoder(code, RPC=True, name='NonbinaryALP+RPC')
     decoders.append(decNew)
-    decML = GurobiIPDecoder(code)
+
+    decNewEnt = NonbinaryALPDecoder(code, RPC=True, useEntropy=True, name='NonbinaryALP+RPCe')
+    decoders.append(decNewEnt)
+    decNewPlain = NonbinaryALPDecoder(code, RPC=False, name='NonbinaryALP')
+    decoders.append(decNewPlain)
+    decML = GurobiIPDecoder(code, gurobiParams='2')
     print('decML')
-    # decoders.append(decML)
-    simulation.ALLOW_DIRTY_VERSION = True
-    simulation.ALLOW_VERSION_MISMATCH = True
+    #decoders.append(decML)
+    #simulation.ALLOW_DIRTY_VERSION = True
+    #simulation.ALLOW_VERSION_MISMATCH = True
     # simulation.DEBUG_SAMPLE = 1
     db.init('sqlite:///:memory:')
-    channel = AWGNC(2, code.rate, seed=8374, q=3)
+    channel = AWGNC(6, code.rate, seed=8374, q=code.q)
     simulator = Simulator(code, channel, decoders, 'ternary')
     simulator.maxSamples = 100
     simulator.maxErrors = 1000
