@@ -308,7 +308,7 @@ cdef class NonbinaryALPDecoder(Decoder):
             kappa -= vals[0, theta[i]]
         self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL, kappa)
 
-    cdef object diagonalize(self):
+    cdef void diagonalize(self):
         """Perform gaussian elimination on the code's parity-check matrix to search for RPC cuts.
         """
         cdef int i, j
@@ -317,12 +317,12 @@ cdef class NonbinaryALPDecoder(Decoder):
             self.coeffs[i] = 0
             for j in range(self.q):
                 if self.useEntropy:
-                    self.coeffs[i] += self.xVals[i, j]*log2(self.xVals[i, j])
+                    self.coeffs[i] += self.xVals[i, j]*log2(self.xVals[i, j]) if self.xVals[i,j] > 1e-6 else 0
                 else:
-                    self.coeffs[i] += fabs(self.xVals[i, j] - 1./self.q)
+                    self.coeffs[i] += (self.xVals[i, j] - 1./self.q)**2
         sortIndices = np.argsort(self.coeffs[:self.blocklength])
         gaussianElimination(self.htilde, sortIndices, True, self.successfulCols, self.q)
-        return None
+
 
 
     def params(self):

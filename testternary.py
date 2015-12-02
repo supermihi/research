@@ -14,12 +14,15 @@ if __name__ == '__main__':
         parityCheckMatrix='~/UNI/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
     #code = TernaryGolayCode()
     code = NonbinaryLinearBlockCode(parityCheckMatrix='Nonbinary_PCM_GF5_155_93.txt')
+    from lpdec.codes import random
+    code = random.makeRandomCode(96, 48, .5, q=5, seed=12345)
+    print(matrices.formatMatrix(code.parityCheckMatrix))
     decoders = []
     # decFL = StaticLPDecoder(code, ml=False)
     print('decFL')
     # decoders.append(decFL)
-    # decCas = StaticLPDecoder(code, cascade=True, ml=False)
-    # decoders.append(decCas)
+    #decCas = StaticLPDecoder(code, cascade=True, ml=False)
+    #decoders.append(decCas)
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     if code.q == 3:
         decTE = AdaptiveTernaryLPDecoder(code)
@@ -36,13 +39,13 @@ if __name__ == '__main__':
     decML = GurobiIPDecoder(code, gurobiParams='2')
     print('decML')
     #decoders.append(decML)
-    #simulation.ALLOW_DIRTY_VERSION = True
-    #simulation.ALLOW_VERSION_MISMATCH = True
+    simulation.ALLOW_DIRTY_VERSION = True
+    simulation.ALLOW_VERSION_MISMATCH = True
     # simulation.DEBUG_SAMPLE = 1
     db.init('sqlite:///:memory:')
-    channel = AWGNC(6, code.rate, seed=8374, q=code.q)
+    channel = AWGNC(9.5, code.rate, seed=8374, q=code.q)
     simulator = Simulator(code, channel, decoders, 'ternary')
-    simulator.maxSamples = 100
+    simulator.maxSamples = 1000
     simulator.maxErrors = 1000
     simulator.wordSeed = 1337
     simulator.outputInterval = 1
