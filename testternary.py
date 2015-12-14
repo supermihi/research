@@ -14,26 +14,28 @@ if __name__ == '__main__':
         parityCheckMatrix='~/UNI/ternarycodes/HmatrixOptRMCodes_n27_k10_d9_best.txt')
     #code = TernaryGolayCode()
     code = NonbinaryLinearBlockCode(parityCheckMatrix='Nonbinary_PCM_GF5_155_93.txt')
+    code = NonbinaryLinearBlockCode(parityCheckMatrix='Nonbinary_PCM_GF7_155_93.txt')
     from lpdec.codes import random
-    code = random.makeRandomCode(96, 48, .5, q=5, seed=12345)
-    print(matrices.formatMatrix(code.parityCheckMatrix))
+    #code = random.makeRandomCode(96, 48, .5, q=5, seed=12345)
     decoders = []
     # decFL = StaticLPDecoder(code, ml=False)
     print('decFL')
     # decoders.append(decFL)
-    #decCas = StaticLPDecoder(code, cascade=True, ml=False)
-    #decoders.append(decCas)
+    decCas = StaticLPDecoder(code, cascade=True, ml=False)
+    decoders.append(decCas)
     from lpdecres.alpternary import AdaptiveTernaryLPDecoder
     if code.q == 3:
         decTE = AdaptiveTernaryLPDecoder(code)
         print('decTE')
         decoders.append(decTE)
     from lpdecres.alpnonbinary import NonbinaryALPDecoder
-    decNew = NonbinaryALPDecoder(code, RPC=True, name='NonbinaryALP+RPC')
-    decoders.append(decNew)
+    # decNew = NonbinaryALPDecoder(code, RPC=True, name='NonbinaryALP+RPC')
+    # decoders.append(decNew)
 
-    decNewEnt = NonbinaryALPDecoder(code, RPC=True, useEntropy=True, name='NonbinaryALP+RPCe')
-    decoders.append(decNewEnt)
+    # decNewEnt = NonbinaryALPDecoder(code, RPC=True, useEntropy=True, name='NonbinaryALP+RPCe')
+    # decoders.append(decNewEnt)
+    decT1 = NonbinaryALPDecoder(code, RPC=True, useEntropy=True, onlyT1=True, name='NonbinaryALP+RPCeT1')
+    decoders.append(decT1)
     decNewPlain = NonbinaryALPDecoder(code, RPC=False, name='NonbinaryALP')
     decoders.append(decNewPlain)
     decML = GurobiIPDecoder(code, gurobiParams='2')
@@ -43,7 +45,7 @@ if __name__ == '__main__':
     simulation.ALLOW_VERSION_MISMATCH = True
     # simulation.DEBUG_SAMPLE = 1
     db.init('sqlite:///:memory:')
-    channel = AWGNC(9.5, code.rate, seed=8374, q=code.q)
+    channel = AWGNC(15, code.rate, seed=8374, q=code.q)
     simulator = Simulator(code, channel, decoders, 'ternary')
     simulator.maxSamples = 1000
     simulator.maxErrors = 1000

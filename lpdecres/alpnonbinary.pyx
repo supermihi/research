@@ -38,8 +38,7 @@ cdef class NonbinaryALPDecoder(Decoder):
 
     cdef:
         g.Model model
-        bint useEntropy
-        bint RPC
+        bint useEntropy, RPC, onlyT1
         int q, blocklength
         list bbClasses,
         object grbParams, timer
@@ -69,6 +68,7 @@ cdef class NonbinaryALPDecoder(Decoder):
 
         self.useEntropy = kwargs.get('useEntropy', False)
         self.RPC = kwargs.get('RPC', True)
+        self.onlyT1 = kwargs.get('onlyT1', False)
 
         self.x = np.empty((code.blocklength, code.q), dtype=np.object)
         for i in range(code.blocklength):
@@ -81,7 +81,10 @@ cdef class NonbinaryALPDecoder(Decoder):
         self.htilde = self.matrix.copy()
         q = self.q = code.q
         self.blocklength = code.blocklength
-        self.bbClasses = BuildingBlockClass.validFacetDefining(q)
+        if self.onlyT1:
+            self.bbClasses = [ BuildingBlockClass([0] * q)]
+        else:
+            self.bbClasses = BuildingBlockClass.validFacetDefining(q)
         print('found {} valid classes:'.format(len(self.bbClasses)))
         for c in self.bbClasses:
             print(c)
@@ -334,4 +337,6 @@ cdef class NonbinaryALPDecoder(Decoder):
             ret['RPC'] = False
         if self.useEntropy:
             ret['useEntropy'] = True
+        if self.onlyT1:
+            ret['onlyT1'] = True
         return ret
