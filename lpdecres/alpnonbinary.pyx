@@ -310,6 +310,7 @@ cdef class NonbinaryALPDecoder(Decoder):
                 self.varInds[(q-1)*i + j] = (q-1)*Nj[i] + j
             kappa -= vals[0, theta[i]]
         self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL, kappa)
+        self._stats['cuts'] += 1
 
     cdef void diagonalize(self):
         """Perform gaussian elimination on the code's parity-check matrix to search for RPC cuts.

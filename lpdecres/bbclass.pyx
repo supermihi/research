@@ -217,14 +217,14 @@ cdef class BuildingBlockClass:
 
 
     @classmethod
-    def validFacetDefining(cls, int q):
+    def validFacetDefining(cls, int q, d=3):
         """Return all valid facet-defining unique classes for given `q`."""
         classes = []
         for shifts in sorted(itertools.product((0,1), repeat=q-1), key=sum):
-            if shifts == (1,0) * ((q-1)//2):
+            if shifts == (1,0) * ((q-1)//2) or q == 2 and shifts == (1,):
                 continue  # redundant class 0101010...
             c = BuildingBlockClass((0,) + shifts)
-            if c.isSymmetric() and c.isValid() and c.hasFullRank():
+            if c.isSymmetric() and c.isValid() and c.hasFullRank(d):
                 classes.append(c)
         return classes
 
