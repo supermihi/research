@@ -8,7 +8,7 @@ if __name__ == '__main__':
     for shifts in [0,1,1,0,0,1,0], [0,1,0,1,0,0,0], [0,1,0,0,0,0,0], [0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0], [0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0]:
         bb = BuildingBlockClass(len(shifts), shifts)
         print('sigma={}'.format(bb.sigma))
-        q = bb.q
+        q = bb.p
         sigma = bb.sigma
         cws = []
         for i in range(1, q):
@@ -23,14 +23,14 @@ if __name__ == '__main__':
 
             for i in range(2, min(q-j, j+1)):
                 assert i + j < q
-                if bb.shifts[i] == 0 and bb.shifts[j] == 0 and bb.shifts[i+j] == 0:
+                if bb.m[i] == 0 and bb.m[j] == 0 and bb.m[i+j] == 0:
                     cws.append([-i, -j, i+j])
                     print('(',i,j,')', end=',')
                     countA +=1
                 # if bb.shifts[i] + bb.shifts[j] == 1 and bb.shifts[i+j] == 1:
                 #     cws.append([-i, -j, i+j])
             for i in range(q-j, q-2):
-                if bb.shifts[i] == bb.shifts[j] == 0 and bb.shifts[i+j-q] == 1:
+                if bb.m[i] == bb.m[j] == 0 and bb.m[i+j-q] == 1:
                     cws.append([-i, -j, i+j])
                     print('(',i,j,')', end=',')
                     countB += 1

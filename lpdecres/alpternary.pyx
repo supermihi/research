@@ -205,7 +205,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 1
                     theta[2*i+1] = 2
                     #lhs += xj[i, 1] + 2*xj[i, 2]
-            self.model.fastAddConstr2(theta[:2*d], self.xj[j,:2*d], gu.GRB.LESS_EQUAL, kappa)
+            self.model.fastAddConstr2(theta[:2*d], self.xj[j,:2*d], b'<', kappa)
             #self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             anyCut = True
             self._stats['cuts'] += 1
@@ -300,7 +300,7 @@ cdef class AdaptiveTernaryLPDecoder(Decoder):
                     theta[2*i] = 2
                     theta[2*i+1] = 1
                     #lhs += 2*xj[i, 1] + xj[i, 2]
-            self.model.fastAddConstr2(theta[:2*d], self.xj[j,:2*d], gu.GRB.LESS_EQUAL, kappa)
+            self.model.fastAddConstr2(theta[:2*d], self.xj[j,:2*d], b'<', kappa)
             #self.model.addConstr(gu.LinExpr(theta[:2*d], self.xj[j]), gu.GRB.LESS_EQUAL, kappa)
             self._stats['cuts'] += 1
             anyCut = True

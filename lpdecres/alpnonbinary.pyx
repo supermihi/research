@@ -38,10 +38,11 @@ cdef class NonbinaryALPDecoder(Decoder):
 
     cdef:
         g.Model model
-        bint useEntropy, RPC, onlyT1
+        bint useEntropy, RPC, onlyT1, use7, use77, csShortcut
         int q, blocklength
         list bbClasses,
         object grbParams, timer
+        BuildingBlockClass q7Bold, q7NonBold
 
         object[::1] vars
         np.int_t[::1] inv, thetaHat, hjtmp, dj
@@ -53,6 +54,7 @@ cdef class NonbinaryALPDecoder(Decoder):
         object[:,::1] x
         np.intp_t[:, ::1] Nj
         np.int_t[:,::1] matrix, htilde, permutations, S, hj
+        np.int_t[:, ::1] q7T6bold, q7T6hi, q7T6lo
         double[:, ::1] xVals, rotatedXvals, v, T
 
 
@@ -69,7 +71,6 @@ cdef class NonbinaryALPDecoder(Decoder):
         self.useEntropy = kwargs.get('useEntropy', False)
         self.RPC = kwargs.get('RPC', True)
         self.onlyT1 = kwargs.get('onlyT1', False)
-
         self.x = np.empty((code.blocklength, code.q), dtype=np.object)
         for i in range(code.blocklength):
             for k in range(1, code.q):
@@ -80,14 +81,46 @@ cdef class NonbinaryALPDecoder(Decoder):
         self.matrix = code.parityCheckMatrix
         self.htilde = self.matrix.copy()
         q = self.q = code.q
+        self.csShortcut = kwargs.get('csShortcut', True)
+        self.use7 = kwargs.get('use7', False) and q == 7
+        if self.use7:
+            self.q7Bold = BuildingBlockClass([0,0,1,0,0,0,0])
+            self.q7NonBold = BuildingBlockClass([0,1,1,0,0,0,0])
+        self.use77 = kwargs.get('use77', False) and q == 7
+        if self.use77:
+            self.q7T6bold = np.array([
+                [0, -1, -1, -1, -1, -1, -1],
+                [0,  0,  0,  0,  0,  0,  1],
+                [0,  0,  0,  0,  0,  1,  0],
+                [0,  0,  0,  0,  1,  0,  0],
+                [0,  0,  0,  1,  0,  0,  0],
+                [0,  0,  1,  0,  0,  0,  0],
+                [0,  1,  0,  0,  0,  0,  0],
+            ])
+            self.q7T6hi = np.array([
+                [0,  0,  0, -1,  0, -1, -1],
+                [0,  0, -1,  0, -1, -1,  0],
+                [0, -1,  0, -1, -1,  0,  0],
+                [0,  1,  0,  0,  1,  1,  1],
+                [0, -1, -1,  0,  0,  0, -1],
+                [0,  0,  1,  1,  1,  0,  1],
+                [0,  1,  1,  1,  0,  1,  0]
+            ])
+            self.q7T6lo = np.array([
+                [0,  1,  1,  0,  1,  0,  0],
+                [0,  0, -1,  0, -1, -1, -1],
+                [0, -1,  0, -1, -1, -1,  0],
+                [0,  1,  0,  0,  0,  1,  1],
+                [0, -1, -1, -1,  0,  0, -1],
+                [0,  0,  0,  1,  1,  0,  1],
+                [0,  0,  1,  1,  0,  1,  0]
+            ])
+            print('use77!')
         self.blocklength = code.blocklength
         if self.onlyT1:
             self.bbClasses = [ BuildingBlockClass([0] * q)]
         else:
             self.bbClasses = BuildingBlockClass.validFacetDefining(q)
-        print('found {} valid classes:'.format(len(self.bbClasses)))
-        for c in self.bbClasses:
-            print(c)
 
         # add simplex constraints
         for i in range(self.code.blocklength):
@@ -131,7 +164,8 @@ cdef class NonbinaryALPDecoder(Decoder):
 
 
     def setStats(self, stats):
-        for stat in 'cuts', 'totalLPs', 'simplexIters', 'optTime':
+        statNames = ['cuts', 'totalLPs', 'simplexIters', 'optTime']
+        for stat in statNames:
             if stat not in stats:
                 stats[stat] = 0
         Decoder.setStats(self, stats)
@@ -165,6 +199,8 @@ cdef class NonbinaryALPDecoder(Decoder):
             cutAdded = False
             # fill self.xVals
             self.model.fastGetX(0, (self.q-1)*self.blocklength, self.tmpVals)
+            if self.model.NumConstrs >= 5000:
+                self.removeInactiveConstraints()
             for i in range(self.blocklength):
                 tmpSum = 0
                 for j in range(1, q):
@@ -175,6 +211,12 @@ cdef class NonbinaryALPDecoder(Decoder):
                 for bbClass in self.bbClasses:
                     for phi in range(1, q):
                         cutAdded |= self.cutSearch(self.hj[row, :], self.Nj[row, :], self.dj[row], bbClass, phi)
+            if not cutAdded and self.use7:
+                for phi in range(1, q):
+                    cutAdded |= self.cutSearch7(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
+            if not cutAdded and self.use77:
+                for phi in range(1, q):
+                    cutAdded |= self.cutSearch77(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
             if not cutAdded:
                 if self.RPC:
                     self.diagonalize()
@@ -184,6 +226,12 @@ cdef class NonbinaryALPDecoder(Decoder):
                             for bbClass in self.bbClasses:
                                 for phi in range(1, q):
                                     cutAdded |= self.cutSearch(self.hjtmp, self.Njtmp, d, bbClass, phi)
+                            if not cutAdded and self.use7:
+                                for phi in range(1, q):
+                                    cutAdded |= self.cutSearch7(self.hjtmp, self.Njtmp, d, phi)
+                            if not cutAdded and self.use77:
+                                for phi in range(1, q):
+                                    cutAdded |= self.cutSearch77(self.hjtmp, self.Njtmp, d, phi)
                 if not cutAdded:
                     self.mlCertificate = self.foundCodeword = self.readSolution()
                     break
@@ -282,6 +330,178 @@ cdef class NonbinaryALPDecoder(Decoder):
             return True
         return False
 
+    cdef object cutSearch7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, int phi):
+        """Cut search algorithm for the special T_5 class for q=7."""
+        cdef:
+            int q = self.q
+            np.int_t[:,::1] tB = self.q7Bold.vals, S = self.S, permutations = self.permutations
+            np.int_t[:, ::1] tNb = self.q7NonBold.vals
+            int sigma = 2
+
+            double[:, ::1] rotatedXvals = self.rotatedXvals
+            int i, j, k, alpha, phiHjInv, zeta, next_
+            double[:, ::1] v = self.v, T = self.T
+            int sumKhat = 0, goalSum = (d-1)*sigma % q, nbPos
+            double PsiVal = 0
+            double minVi, columnMin, val
+
+        # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
+        for i in range(d):
+            phiHjInv = self.inv[phi*hj[i] % q]
+            for j in range(1, q):
+                rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
+
+        for nbPos in range(d):
+            sumKhat = 0
+            PsiVal = 0
+            # compute the v^j(x_i) and unconstrained solution on-the-fly
+            for i in range(d):
+                minVi = INFINITY
+                for j in range(q):
+                    v[i, j] = 9 - (tNb[0, j] if i == nbPos else tB[0,j])  #- np.dot(t[j], rotatedXvals[i])
+                    for k in range(1, q):
+                        v[i, j] -= (tNb[j, k] if i == nbPos else tB[j,k]) * rotatedXvals[i, k]
+                    if v[i, j] < minVi:
+                        minVi = v[i, j]
+                        self.thetaHat[i] = j
+                sumKhat += self.thetaHat[i]
+                PsiVal += v[i, self.thetaHat[i]]
+
+            # check shortcutting conditions
+            if self.csShortcut and PsiVal >= 9 - 1e-8:
+                continue  # unconstrained solution already too large
+            if sumKhat % q == goalSum and PsiVal < 9 - 1e-8:
+                self.insertCut7(hj, Nj, d, self.thetaHat, phi, nbPos)
+                return True
+
+            # start DP approach
+            for zeta in range(q):
+                T[0, zeta] = v[0, zeta]
+                S[0, zeta] = zeta
+            for i in range(1, d):
+                columnMin = INFINITY
+                for zeta in range(q):
+                    # if i == d - 1 and zeta != goalSum:
+                    #     continue
+                    T[i, zeta] = INFINITY
+                    S[i, zeta] = -1
+                    for alpha in range(q):
+                        val = v[i, alpha] + T[i-1, (zeta - alpha) % q]
+                        if val < T[i, zeta]:
+                            T[i, zeta] = val
+                            S[i, zeta] = alpha
+                    columnMin = fmin(columnMin, T[i, zeta])
+                # if columnMin >= t[0, sigma]:
+                #     print('MINMIN')
+                #     return False  # see remark 8, point 3
+            if T[d-1, goalSum] < 9 - 1e-8:
+                # found cut
+                self.thetaHat[d-1] = S[d-1, goalSum]
+                next_ = (goalSum - self.thetaHat[d-1]) % q
+                for i in range(d-2, -1, -1):
+                    self.thetaHat[i] = S[i, next_]
+                    next_ = (next_ - self.thetaHat[i]) % q
+                self.insertCut7(hj, Nj, d, self.thetaHat, phi, nbPos)
+                return True
+        return False
+
+    cdef object cutSearch77(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, int phi):
+        """Cut search algorithm for the special T_6 class for q=7."""
+        cdef:
+            int q = self.q
+            np.int_t[:,::1] tB = self.q7T6bold, S = self.S, permutations = self.permutations
+            np.int_t[:, ::1] tHi = self.q7T6hi, tLo = self.q7T6lo
+
+            double[:, ::1] rotatedXvals = self.rotatedXvals
+            int i, j, k, alpha, phiHjInv, zeta, next_
+            double[:, ::1] v = self.v, T = self.T
+            np.int_t[:, ::1] currentVals
+            int sumKhat = 0, goalSum = 0, hiPos, loPos
+            double PsiVal = 0
+            double minVi, columnMin, val
+
+        # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
+        for i in range(d):
+            phiHjInv = self.inv[phi*hj[i] % q]
+            for j in range(1, q):
+                rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
+
+        for hiPos in range(d):
+            for loPos in range(d):
+                if loPos == hiPos:
+                    continue
+                sumKhat = 0
+                PsiVal = 0
+                # compute the v^j(x_i) and unconstrained solution on-the-fly
+                for i in range(d):
+                    minVi = INFINITY
+                    if i == hiPos:
+                        currentVals = tHi
+                    elif i == loPos:
+                        currentVals = tLo
+                    else:
+                        currentVals = tB
+                    for j in range(q):
+                        v[i, j] = - currentVals[0, j]
+                        for k in range(1, q):
+                            v[i, j] -= currentVals[j, k] * rotatedXvals[i, k]
+                        if v[i, j] < minVi:
+                            minVi = v[i, j]
+                            self.thetaHat[i] = j
+                    sumKhat += self.thetaHat[i]
+                    PsiVal += v[i, self.thetaHat[i]]
+
+                # check shortcutting conditions
+                if PsiVal >= -1e-8:
+                    continue  # unconstrained solution already too large
+                if sumKhat % q == goalSum:
+                    print('found 77 fast')
+                    self.insertCut77(hj, Nj, d, self.thetaHat, phi, hiPos, loPos)
+                    return True
+
+                # start DP approach
+                for zeta in range(q):
+                    T[0, zeta] = v[0, zeta]
+                    S[0, zeta] = zeta
+                for i in range(1, d):
+                    columnMin = INFINITY
+                    for zeta in range(q):
+                        # if i == d - 1 and zeta != goalSum:
+                        #     continue
+                        T[i, zeta] = INFINITY
+                        S[i, zeta] = -1
+                        for alpha in range(q):
+                            val = v[i, alpha] + T[i-1, (zeta - alpha) % q]
+                            if val < T[i, zeta]:
+                                T[i, zeta] = val
+                                S[i, zeta] = alpha
+                        columnMin = fmin(columnMin, T[i, zeta])
+                    # if columnMin >= t[0, sigma]:
+                    #     print('MINMIN')
+                    #     return False  # see remark 8, point 3
+                if T[d-1, goalSum] < - 1e-5:
+                    # found cut
+                    self.thetaHat[d-1] = S[d-1, goalSum]
+                    next_ = (goalSum - self.thetaHat[d-1]) % q
+                    for i in range(d-2, -1, -1):
+                        self.thetaHat[i] = S[i, next_]
+                        next_ = (next_ - self.thetaHat[i]) % q
+                    self.insertCut77(hj, Nj, d, self.thetaHat, phi, hiPos, loPos)
+                    return True
+        return False
+    
+    cdef void removeInactiveConstraints(self):
+        """Removes constraints which are not active at the current solution."""
+        cdef int i, removed = 0
+        cdef double avgSlack, slack
+        cdef g.Constr constr
+        for constr in self.model.getConstrs()[self.blocklength:]:
+            if self.model.getElementDblAttr(b'Slack', constr.index) > 1e-5:
+                removed += 1
+                self.model.remove(constr)
+        if removed:
+            self.model.optimize()
+            
     cdef bint readSolution(self):
         cdef bint codeword = True
         cdef int i, k
@@ -309,8 +529,58 @@ cdef class NonbinaryALPDecoder(Decoder):
                 self.coeffs[(q-1)*i + j] = vals[theta[i], permutations[hjPhi, j + 1]]
                 self.varInds[(q-1)*i + j] = (q-1)*Nj[i] + j
             kappa -= vals[0, theta[i]]
-        self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL, kappa)
+        self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
         self._stats['cuts'] += 1
+
+    cdef void insertCut7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, np.int_t[::1] theta, int phi, int nbPos):
+        cdef:
+            int  q = self.q
+            double kappa = (d-1)*9 # t_{0,\sigma}
+            int i, j, tki, hjPhi
+            np.int_t[:, ::1] permutations = self.permutations, vals = self.q7Bold.vals
+        for i in range(d):
+            hjPhi = hj[i]*phi % q
+            for j in range(q-1):
+                if i == nbPos:
+                    self.coeffs[(q-1)*i + j] = self.q7NonBold.vals[theta[i], permutations[hjPhi, j + 1]]
+                else:
+                    self.coeffs[(q-1)*i + j] = vals[theta[i], permutations[hjPhi, j + 1]]
+                self.varInds[(q-1)*i + j] = (q-1)*Nj[i] + j
+            if i == nbPos:
+                kappa -= self.q7NonBold.vals[0, theta[i]]
+            else:
+                kappa -= vals[0, theta[i]]
+        self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
+        self._stats['cuts'] += 1
+        self._stats['cuts7T5'] += 1
+        print('found 7')
+
+    cdef void insertCut77(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, np.int_t[::1] theta, int phi, int hiPos, int loPos):
+        cdef:
+            int  q = self.q
+            double kappa = 0
+            int i, j, tki, hjPhi
+            np.int_t[:, ::1] permutations = self.permutations, tB = self.q7T6bold, tHi = self.q7T6hi, tLo = self.q7T6lo
+        for i in range(d):
+            hjPhi = hj[i]*phi % q
+            for j in range(q-1):
+                if i == hiPos:
+                    self.coeffs[(q-1)*i + j] = tHi[theta[i], permutations[hjPhi, j + 1]]
+                elif i == loPos:
+                    self.coeffs[(q-1)*i + j] = tLo[theta[i], permutations[hjPhi, j + 1]]
+                else:
+                    self.coeffs[(q-1)*i + j] = tB[theta[i], permutations[hjPhi, j + 1]]
+                self.varInds[(q-1)*i + j] = (q-1)*Nj[i] + j
+            if i == hiPos:
+                kappa -= tHi[0, theta[i]]
+            elif i == loPos:
+                kappa -= tLo[0, theta[i]]
+            else:
+                kappa -= tB[0, theta[i]]
+        self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
+        self._stats['cuts'] += 1
+        self._stats['cuts7T6'] += 1
+        print('found 77')
 
     cdef void diagonalize(self):
         """Perform gaussian elimination on the code's parity-check matrix to search for RPC cuts.
