@@ -38,7 +38,7 @@ cdef class NonbinaryALPDecoder(Decoder):
 
     cdef:
         g.Model model
-        bint useEntropy, RPC, onlyT1, use7, use77, csShortcut
+        bint useEntropy, RPC, onlyT1, use7, use77, csShortcut, all7
         int q, blocklength
         list bbClasses,
         object grbParams, timer
@@ -82,12 +82,13 @@ cdef class NonbinaryALPDecoder(Decoder):
         self.htilde = self.matrix.copy()
         q = self.q = code.q
         self.csShortcut = kwargs.get('csShortcut', True)
+        self.all7 = kwargs.get('all7', False) and q == 7
         self.use7 = kwargs.get('use7', False) and q == 7
-        if self.use7:
+        if self.use7 or self.all7:
             self.q7Bold = BuildingBlockClass([0,0,1,0,0,0,0])
             self.q7NonBold = BuildingBlockClass([0,1,1,0,0,0,0])
         self.use77 = kwargs.get('use77', False) and q == 7
-        if self.use77:
+        if self.use77 or self.all7:
             self.q7T6bold = np.array([
                 [0, -1, -1, -1, -1, -1, -1],
                 [0,  0,  0,  0,  0,  0,  1],
@@ -116,6 +117,7 @@ cdef class NonbinaryALPDecoder(Decoder):
                 [0,  0,  1,  1,  0,  1,  0]
             ])
             print('use77!')
+
         self.blocklength = code.blocklength
         if self.onlyT1:
             self.bbClasses = [ BuildingBlockClass([0] * q)]
@@ -148,6 +150,8 @@ cdef class NonbinaryALPDecoder(Decoder):
         self.xVals = np.zeros((code.blocklength, q))
         self.tmpVals = np.empty(code.blocklength * (q-1))
         self.initCutSearchTempArrays()
+        if self.all7:
+            self.addAllCuts7()
 
     def initCutSearchTempArrays(self):
         self.rotatedXvals = np.zeros((self.code.blocklength, self.q))
@@ -521,7 +525,7 @@ cdef class NonbinaryALPDecoder(Decoder):
         cdef:
             int  q = self.q
             double kappa = (d-1)*bbClass.vals[0, bbClass.sigma]
-            int i, j, tki, hjPhi
+            int i, j, hjPhi
             np.int_t[:, ::1] permutations = self.permutations, vals = bbClass.vals
         for i in range(d):
             hjPhi = hj[i]*phi % q
@@ -532,24 +536,25 @@ cdef class NonbinaryALPDecoder(Decoder):
         self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
         self._stats['cuts'] += 1
 
-    cdef void insertCut7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, np.int_t[::1] theta, int phi, int nbPos):
+    cdef void insertCut7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, np.int_t[::1] k, int phi, int nbPos):
         cdef:
             int  q = self.q
             double kappa = (d-1)*9 # t_{0,\sigma}
-            int i, j, tki, hjPhi
-            np.int_t[:, ::1] permutations = self.permutations, vals = self.q7Bold.vals
+            int i, j, hjPhi
+            np.int_t[:, ::1] permutations = self.permutations, tb = self.q7Bold.vals, tnb = self.q7NonBold.vals
         for i in range(d):
             hjPhi = hj[i]*phi % q
             for j in range(q-1):
                 if i == nbPos:
-                    self.coeffs[(q-1)*i + j] = self.q7NonBold.vals[theta[i], permutations[hjPhi, j + 1]]
+                    self.coeffs[(q-1)*i + j] = tnb[k[i], permutations[hjPhi, j + 1]]
                 else:
-                    self.coeffs[(q-1)*i + j] = vals[theta[i], permutations[hjPhi, j + 1]]
+                    self.coeffs[(q-1)*i + j] = tb[k[i], permutations[hjPhi, j + 1]]
                 self.varInds[(q-1)*i + j] = (q-1)*Nj[i] + j
             if i == nbPos:
-                kappa -= self.q7NonBold.vals[0, theta[i]]
+                kappa -= tnb[0, k[i]]
             else:
-                kappa -= vals[0, theta[i]]
+                kappa -= tb[0, k[i]]
+        kappa = (d-1)*9 - sum(tnb[0, k[i]] if i == nbPos else tb[0, k[i]] for i in range(d))
         self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
         self._stats['cuts'] += 1
         self._stats['cuts7T5'] += 1
@@ -559,7 +564,7 @@ cdef class NonbinaryALPDecoder(Decoder):
         cdef:
             int  q = self.q
             double kappa = 0
-            int i, j, tki, hjPhi
+            int i, j, hjPhi
             np.int_t[:, ::1] permutations = self.permutations, tB = self.q7T6bold, tHi = self.q7T6hi, tLo = self.q7T6lo
         for i in range(d):
             hjPhi = hj[i]*phi % q
@@ -596,6 +601,37 @@ cdef class NonbinaryALPDecoder(Decoder):
                     self.coeffs[i] += (self.xVals[i, j] - 1./self.q)**2
         sortIndices = np.argsort(self.coeffs[:self.blocklength])
         gaussianElimination(self.htilde, sortIndices, True, self.successfulCols, self.q)
+
+
+    def addAllCuts7(self):
+        import itertools
+        rotatedXvals = self.rotatedXvals
+        permutations = self.permutations
+        q = self.q
+        tnb = self.q7NonBold.vals
+        tb = self.q7Bold.vals
+        f7 = list(range(q))
+        for row in range(self.matrix.shape[0]):
+            N = self.Nj[row, :]
+            d = self.dj[row]
+            h = self.hj[row, :]
+            for phi in range(1, q):
+                for k in itertools.product(f7, repeat=d):
+                    k = list(k)
+                    for inb in range(d):
+                        k[inb] = ((d-1)*2 - sum(k[i] for i in range(d) if i != inb)) % 7
+                        kappa = (d-1)*9 - sum(tnb[0, k[i]] if i == inb else tb[0, k[i]] for i in range(d))
+                        for i in range(d):
+                            hjPhi = h[i]*phi % q
+                            for j in range(q-1):
+                                if i == inb:
+                                    self.coeffs[(q-1)*i + j] = tnb[k[i], self.permutations[hjPhi, j + 1]]
+                                else:
+                                    self.coeffs[(q-1)*i + j] = tb[k[i], self.permutations[hjPhi, j + 1]]
+                                self.varInds[(q-1)*i + j] = (q-1)*N[i] + j
+                        self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
+
+
 
 
 
