@@ -116,7 +116,6 @@ cdef class NonbinaryALPDecoder(Decoder):
                 [0,  0,  0,  1,  1,  0,  1],
                 [0,  0,  1,  1,  0,  1,  0]
             ])
-            print('use77!')
 
         self.blocklength = code.blocklength
         if self.onlyT1:
@@ -169,6 +168,10 @@ cdef class NonbinaryALPDecoder(Decoder):
 
     def setStats(self, stats):
         statNames = ['cuts', 'totalLPs', 'simplexIters', 'optTime']
+        if self.use7:
+            statNames.append('cutsT5')
+        if self.use77:
+            statNames.append('cutsT6')
         for stat in statNames:
             if stat not in stats:
                 stats[stat] = 0
@@ -182,7 +185,7 @@ cdef class NonbinaryALPDecoder(Decoder):
         cdef:
             int i, j, d, row, phi, q = self.q
             double tmpSum
-            bint cutAdded
+            bint cutAdded, integral
             BuildingBlockClass bbClass
         cdef g.Constr constr
 
@@ -193,6 +196,7 @@ cdef class NonbinaryALPDecoder(Decoder):
 
         self.mlCertificate = self.foundCodeword = True
         while True:
+            integral = True
             self._stats['totalLPs'] += 1
             with self.timer:
                 self.model.optimize()
@@ -210,35 +214,57 @@ cdef class NonbinaryALPDecoder(Decoder):
                 for j in range(1, q):
                     self.xVals[i, j] = self.tmpVals[i*(q-1) + j - 1]
                     tmpSum += self.xVals[i, j]
+                    if self.xVals[i,j] > 1e-5 and self.xVals[i,j] < 1-1e-5:
+                        integral = False
                 self.xVals[i, 0] = 1 - tmpSum
             for row in range(self.matrix.shape[0]):
+
                 for bbClass in self.bbClasses:
                     for phi in range(1, q):
+                        self.fillRotatedXvals(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
                         cutAdded |= self.cutSearch(self.hj[row, :], self.Nj[row, :], self.dj[row], bbClass, phi)
             if not cutAdded and self.use7:
-                for phi in range(1, q):
-                    cutAdded |= self.cutSearch7(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
+                for row in range(self.matrix.shape[0]):
+                    for phi in range(1, q):
+                        self.fillRotatedXvals(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
+                        cutAdded |= self.cutSearch7(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
             if not cutAdded and self.use77:
-                for phi in range(1, q):
-                    cutAdded |= self.cutSearch77(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
+                for row in range(self.matrix.shape[0]):
+                    for phi in range(1, q):
+                        self.fillRotatedXvals(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
+                        cutAdded |= self.cutSearch77(self.hj[row, :], self.Nj[row, :], self.dj[row], phi)
             if not cutAdded:
-                if self.RPC:
+                if self.RPC and not integral:
                     self.diagonalize()
                     for row in range(self.htilde.shape[0]):
                         d = self.makeHjNj(self.htilde[row,:])
                         if d != 0:
                             for bbClass in self.bbClasses:
                                 for phi in range(1, q):
+                                    self.fillRotatedXvals(self.hjtmp, self.Njtmp, d, phi)
                                     cutAdded |= self.cutSearch(self.hjtmp, self.Njtmp, d, bbClass, phi)
                             if not cutAdded and self.use7:
                                 for phi in range(1, q):
+                                    self.fillRotatedXvals(self.hjtmp, self.Njtmp, d, phi)
                                     cutAdded |= self.cutSearch7(self.hjtmp, self.Njtmp, d, phi)
                             if not cutAdded and self.use77:
                                 for phi in range(1, q):
+                                    self.fillRotatedXvals(self.hjtmp, self.Njtmp, d, phi)
                                     cutAdded |= self.cutSearch77(self.hjtmp, self.Njtmp, d, phi)
                 if not cutAdded:
                     self.mlCertificate = self.foundCodeword = self.readSolution()
                     break
+
+    cdef void fillRotatedXvals(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, int phi):
+        cdef:
+            int i, j, q = self.q, phiHjInv
+            double[:, ::1] rotatedXvals = self.rotatedXvals
+            np.int_t[:, ::1] permutations = self.permutations
+
+        for i in range(d):
+            phiHjInv = self.inv[phi*hj[i] % q]
+            for j in range(1, q):
+                rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
 
     cdef int makeHjNj(self, np.int_t[::1] row):
         cdef int j, i = 0
@@ -277,12 +303,6 @@ cdef class NonbinaryALPDecoder(Decoder):
             double PsiVal = 0
             double minVi, columnMin, val
 
-        # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
-        for i in range(d):
-            phiHjInv = self.inv[phi*hj[i] % q]
-            for j in range(1, q):
-                rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
-
         # compute the v^j(x_i) and unconstrained solution on-the-fly
         for i in range(d):
             minVi = INFINITY
@@ -320,9 +340,9 @@ cdef class NonbinaryALPDecoder(Decoder):
                         T[i, zeta] = val
                         S[i, zeta] = alpha
                 columnMin = fmin(columnMin, T[i, zeta])
-            # if columnMin >= t[0, sigma]:
-            #     print('MINMIN')
-            #     return False  # see remark 8, point 3
+            if columnMin >= t[0, sigma]:
+                print('MINMIN')
+                return False  # see remark 8, point 3
         if T[d-1, goalSum] < t[0, sigma] - 1e-5:
             # found cut
             self.thetaHat[d-1] = S[d-1, goalSum]
@@ -334,12 +354,13 @@ cdef class NonbinaryALPDecoder(Decoder):
             return True
         return False
 
-    cdef object cutSearch7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, int phi):
+    cdef bint cutSearch7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, int phi):
         """Cut search algorithm for the special T_5 class for q=7."""
         cdef:
             int q = self.q
             np.int_t[:,::1] tB = self.q7Bold.vals, S = self.S, permutations = self.permutations
             np.int_t[:, ::1] tNb = self.q7NonBold.vals
+
             int sigma = 2
 
             double[:, ::1] rotatedXvals = self.rotatedXvals
@@ -348,12 +369,7 @@ cdef class NonbinaryALPDecoder(Decoder):
             int sumKhat = 0, goalSum = (d-1)*sigma % q, nbPos
             double PsiVal = 0
             double minVi, columnMin, val
-
-        # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
-        for i in range(d):
-            phiHjInv = self.inv[phi*hj[i] % q]
-            for j in range(1, q):
-                rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
+            np.int_t[::1] thetaHat = self.thetaHat
 
         for nbPos in range(d):
             sumKhat = 0
@@ -367,17 +383,16 @@ cdef class NonbinaryALPDecoder(Decoder):
                         v[i, j] -= (tNb[j, k] if i == nbPos else tB[j,k]) * rotatedXvals[i, k]
                     if v[i, j] < minVi:
                         minVi = v[i, j]
-                        self.thetaHat[i] = j
-                sumKhat += self.thetaHat[i]
-                PsiVal += v[i, self.thetaHat[i]]
+                        thetaHat[i] = j
+                sumKhat += thetaHat[i]
+                PsiVal += v[i, thetaHat[i]]
 
             # check shortcutting conditions
-            if self.csShortcut and PsiVal >= 9 - 1e-8:
+            if self.csShortcut and PsiVal >= 9 - 1e-5:
                 continue  # unconstrained solution already too large
-            if sumKhat % q == goalSum and PsiVal < 9 - 1e-8:
-                self.insertCut7(hj, Nj, d, self.thetaHat, phi, nbPos)
+            if sumKhat % q == goalSum and PsiVal < 9 - 1e-5:
+                self.insertCut7(hj, Nj, d, thetaHat, phi, nbPos)
                 return True
-
             # start DP approach
             for zeta in range(q):
                 T[0, zeta] = v[0, zeta]
@@ -398,14 +413,14 @@ cdef class NonbinaryALPDecoder(Decoder):
                 # if columnMin >= t[0, sigma]:
                 #     print('MINMIN')
                 #     return False  # see remark 8, point 3
-            if T[d-1, goalSum] < 9 - 1e-8:
+            if T[d-1, goalSum] < 9 - 1e-5:
                 # found cut
-                self.thetaHat[d-1] = S[d-1, goalSum]
-                next_ = (goalSum - self.thetaHat[d-1]) % q
+                thetaHat[d-1] = S[d-1, goalSum]
+                next_ = (goalSum - thetaHat[d-1]) % q
                 for i in range(d-2, -1, -1):
-                    self.thetaHat[i] = S[i, next_]
-                    next_ = (next_ - self.thetaHat[i]) % q
-                self.insertCut7(hj, Nj, d, self.thetaHat, phi, nbPos)
+                    thetaHat[i] = S[i, next_]
+                    next_ = (next_ - thetaHat[i]) % q
+                self.insertCut7(hj, Nj, d, thetaHat, phi, nbPos)
                 return True
         return False
 
@@ -425,10 +440,10 @@ cdef class NonbinaryALPDecoder(Decoder):
             double minVi, columnMin, val
 
         # fill rotatedXvals matrix that contains x vals "rotated" according to hj and phi
-        for i in range(d):
-            phiHjInv = self.inv[phi*hj[i] % q]
-            for j in range(1, q):
-                rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
+        #for i in range(d):
+        #    phiHjInv = self.inv[phi*hj[i] % q]
+        #    for j in range(1, q):
+        #        rotatedXvals[i, j] = self.xVals[Nj[i], permutations[phiHjInv, j]]
 
         for hiPos in range(d):
             for loPos in range(d):
@@ -538,8 +553,8 @@ cdef class NonbinaryALPDecoder(Decoder):
 
     cdef void insertCut7(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, np.int_t[::1] k, int phi, int nbPos):
         cdef:
+            double kappa = (d-1)*9
             int  q = self.q
-            double kappa = (d-1)*9 # t_{0,\sigma}
             int i, j, hjPhi
             np.int_t[:, ::1] permutations = self.permutations, tb = self.q7Bold.vals, tnb = self.q7NonBold.vals
         for i in range(d):
@@ -554,11 +569,10 @@ cdef class NonbinaryALPDecoder(Decoder):
                 kappa -= tnb[0, k[i]]
             else:
                 kappa -= tb[0, k[i]]
-        kappa = (d-1)*9 - sum(tnb[0, k[i]] if i == nbPos else tb[0, k[i]] for i in range(d))
         self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
         self._stats['cuts'] += 1
-        self._stats['cuts7T5'] += 1
-        print('found 7')
+        self._stats['cutsT5'] += 1
+        print('T5')
 
     cdef void insertCut77(self, np.int_t[::1] hj, np.intp_t[::1] Nj, int d, np.int_t[::1] theta, int phi, int hiPos, int loPos):
         cdef:
@@ -584,8 +598,8 @@ cdef class NonbinaryALPDecoder(Decoder):
                 kappa -= tB[0, theta[i]]
         self.model.fastAddConstr2(self.coeffs[:(q-1)*d], self.varInds[:(q-1)*d], g.GRB.LESS_EQUAL[0], kappa)
         self._stats['cuts'] += 1
-        self._stats['cuts7T6'] += 1
-        print('found 77')
+        self._stats['cutsT6'] += 1
+        print('T6')
 
     cdef void diagonalize(self):
         """Perform gaussian elimination on the code's parity-check matrix to search for RPC cuts.

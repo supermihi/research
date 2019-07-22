@@ -31,8 +31,7 @@ def makeExtensions():
         sys.argv.remove('--profile')
     extensions = cythonize(sources, include_path=[np.get_include()],
                            compiler_directives=directives)
-    for e in extensions:
-        e.include_dirs += [np.get_include()] # the above does not work on windows
+
     if '--no-glpk' in sys.argv:
         extensions = [e for e in extensions if 'glpk' not in e.libraries]
         sys.argv.remove('--no-gurobi')
@@ -67,5 +66,6 @@ setup(
     install_requires=['numpy', 'cython'],
     include_package_data=True,
     ext_modules=makeExtensions(),
+    include_dirs = [np.get_include()],
     packages=find_packages(exclude=['lpd_research']),
 )
